@@ -1,0 +1,23 @@
+{
+  "name": "kindle-flashcards",
+  "version": "1.0.0",
+  "description": "Set of utilities for creating flashcards on Kindle",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/robert7/kindle-flashcards.git"
+  },
+  "author": "Robert Spiegel",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/robert7/kindle-flashcards/issues"
+  },
+  "homepage": "https://github.com/robert7/kindle-flashcards#readme",
+  "dependencies": {
+    "csv-parser": "^2.3.2",
+    "event-stream": "^4.0.1"
+  }
+}
