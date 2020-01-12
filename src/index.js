@@ -14,7 +14,14 @@ const readCardDataFromFile = (fileName, cards) => {
         );
 };
 
-process.stdout.write(config.apiKey);
+//process.stdout.write(config.apiKey);
+
+var options = {};
+var googleTranslate = require('google-translate')(config.apiKey, options);
+googleTranslate.translate('My name is Brandon', 'es', function(err, translation) {
+    console.log(translation.translatedText);
+    // =>  Mi nombre es Brandon
+});
 
 const main = (argv) => {
     if (process.argv.length < 2) {
