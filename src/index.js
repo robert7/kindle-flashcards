@@ -14,16 +14,16 @@ const readCardDataFromFile = (fileName, cards) => {
 };
 
 const main = (argv) => {
-    if (argv.length < 2) {
+    if (process.argv.length < 2) {
         process.stdout.write('invalid arguments');
         process.exit(1);
     }
     const args = argv.slice(2);
 
     const cards = [];
-    readCardDataFromFile(args, cards);
+    readCardDataFromFile(args[0], cards);
 };
 
-main(argv);
+main(process.argv);
 
 
