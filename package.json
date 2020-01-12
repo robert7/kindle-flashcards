@@ -18,6 +18,7 @@
   "homepage": "https://github.com/robert7/kindle-flashcards#readme",
   "dependencies": {
     "csv-parse": "^4.8.3",
-    "event-stream": "^4.0.1"
+    "event-stream": "^4.0.1",
+    "google-translate": "^3.0.0"
   }
 }

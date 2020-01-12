@@ -1,6 +1,7 @@
 const fs = require('fs'),
     es = require('event-stream'),
-    parse = require('csv-parse/lib/sync');
+    parse = require('csv-parse/lib/sync'),
+    config = require('../config/config');
 
 const readCardDataFromFile = (fileName, cards) => {
     let stream = fs.createReadStream(fileName)
@@ -12,6 +13,8 @@ const readCardDataFromFile = (fileName, cards) => {
             })
         );
 };
+
+process.stdout.write(config.apiKey);
 
 const main = (argv) => {
     if (process.argv.length < 2) {
