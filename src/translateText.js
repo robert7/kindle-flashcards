@@ -16,7 +16,7 @@ const googleTranslate = require('google-translate')(config.apiKey, googleTransla
  * @return {Promise<unknown>}
  */
 const translateText = (text, sourceLang, targetLang) => {
-    return new Promise(function(resolve, reject) {
+    return new Promise((resolve, reject) => {
         googleTranslate.translate(text, sourceLang, targetLang, (err, translation) => {
             if (err) {
                 reject(err);
@@ -28,7 +28,6 @@ const translateText = (text, sourceLang, targetLang) => {
 };
 
 exports.translateText = translateText;
-
 
 // usage example
 // const translateText = require('./translateText').translateText;
