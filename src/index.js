@@ -1,26 +1,48 @@
 const fs = require('fs'),
     es = require('event-stream'),
-    parse = require('csv-parse/lib/sync'),
-    config = require('../config/config');
+    parse = require('csv-parse/lib/sync');
+const translateText = require('@vitalets/google-translate-api');
 
 const readCardDataFromFile = (fileName, cards) => {
+    let lineNr = 0;
+
     let stream = fs.createReadStream(fileName)
-        .pipe(es.split())           // split on new line
+        // split on new line
+        .pipe(es.split())
         .pipe(
             es.mapSync(function(line) {
-                process.stdout.write(line);
-                cards.push(line);
+
+                // pause the readstream
+                stream.pause();
+
+                lineNr += 1;
+
+                // process line here and call s.resume() when ready
+                const parsedLine = parse(line, {
+                    columns: false,
+                    skip_empty_lines: true,
+                    delimiter: ';'
+                });
+                if (Array.isArray(parsedLine)) {
+                    cards.push(parsedLine);
+                }
+
+                // resume the readstream, possibly from a callback
+                stream.resume();
             })
         );
 };
 
-//process.stdout.write(config.apiKey);
+const addTranslation = ( cards) => {
+     // see http://bluebirdjs.com/docs/api/promise.mapseries.html
+    // or http://bluebirdjs.com/docs/api/promise.each.html
+};
 
-var options = {};
-var googleTranslate = require('google-translate')(config.apiKey, options);
-googleTranslate.translate('My name is Brandon', 'es', function(err, translation) {
-    console.log(translation.translatedText);
-    // =>  Mi nombre es Brandon
+
+
+
+translateText('My name is Brandon', {from: 'en', to: 'es'}).then((result) => {
+    console.log(result);
 });
 
 const main = (argv) => {
