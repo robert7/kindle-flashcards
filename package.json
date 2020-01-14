@@ -21,7 +21,9 @@
     "bluebird": "^3.7.2",
     "csv-parse": "^4.8.3",
     "csv-stringify": "^5.3.6",
+    "epub-gen": "^0.1.0",
     "event-stream": "^4.0.1",
-    "google-translate": "^3.0.0"
+    "google-translate": "^3.0.0",
+    "pdfkit": "^0.11.0"
   }
 }

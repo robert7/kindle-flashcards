@@ -113,7 +113,7 @@ const addTranslation = (cards) => {
     });
 };
 
-const writeToFile = (cards, fileName) => {
+const writeToCSVFile = (cards, fileName) => {
     // stringify(records, [options], callback).
     csvStringify(cards, CSV_STRINGIFY_OPTIONS, (err, output) => {
         fs.writeFile(fileName, output, function(err) {
@@ -123,6 +123,51 @@ const writeToFile = (cards, fileName) => {
             console.log(`The file ${fileName} was saved.`);
         });
     });
+};
+
+const writeToPDFFile = (cards, fileName) => {
+    const PDFDocument = require('pdfkit');
+    // Create a document
+    const doc = new PDFDocument();
+    // Pipe its output somewhere, like to a file or HTTP response
+    // See below for browser usage
+    doc.pipe(fs.createWriteStream(fileName));
+
+    doc.fontSize(25);
+    cards.forEach((card) => {
+        doc.text(card[0]);
+        doc.addPage();
+        doc.text(card[1]);
+        doc.addPage();
+    });
+    doc.end();
+};
+
+const writeToEPUBFile = (cards, fileName) => {
+    const Epub = require('epub-gen');
+
+    let counter = 0;
+
+    const content = [];
+    cards.forEach((card) => {
+        content.push({
+            title: counter++,
+            data: `<p>${card[0]}</p>`
+        });
+        content.push({
+            title: counter++,
+            data: `<p>${card[1]}</p>`
+        });
+    });
+
+    const option = {
+        title: 'flashcards',
+        author: 'flashcards',
+        //cover: "http://demo.com/url-to-cover-image.jpg", // Url or File path, both ok.
+        content
+    };
+
+    new Epub(option, fileName);
 };
 
 const main = (argv) => {
@@ -136,15 +181,40 @@ const main = (argv) => {
     const cards = [];
 
     const inputFile = args[0];
-    const writeCardsToFile = () => writeToFile(cards, inputFile + '.new');
+    const writeCardsToCSVFile = () => writeToCSVFile(cards, inputFile + '.new');
+    const writeCardsToPDFFile = () => writeToPDFFile(cards, inputFile + '.pdf');
+    const writeCardsToEPUBFile = () => writeToEPUBFile(cards, inputFile + '.pdf');
+
     readCardDataFromFile(inputFile, cards)
         .then(addTranslation)
-        .then(writeCardsToFile)
+        .then(writeCardsToCSVFile)
+        .then(writeCardsToEPUBFile)
         .then(() => {
             console.log('All done.');
         });
 };
 
-main(process.argv);
+//main(process.argv);
+
+const Epub = require('epub-gen');
+const option = {
+    title: 'Alice\'s Adventures in Wonderland', // *Required, title of the book.
+    author: 'Lewis Carroll', // *Required, name of the author.
+    publisher: 'Macmillan & Co.', // optional
+    //cover: 'http://demo.com/url-to-cover-image.jpg', // Url or File path, both ok.
+    content: [
+        {
+            title: 'About the author', // Optional
+            author: 'John Doe', // Optional
+            data: '<h2>Charles Lutwidge Dodgson</h2>'
+                + '<div lang="en">Better known by the pen name Lewis Carroll...</div>' // pass html string
+        },
+        {
+            title: 'Down the Rabbit Hole',
+            data: '<p>Alice was beginning to get very tired...</p>'
+        }
+    ]
+};
+new Epub(option, 'aa.epub');
 
 
