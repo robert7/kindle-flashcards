@@ -8,6 +8,48 @@ const
     Promise = require('bluebird'),
     Epub = require('epub-gen');
 
+const PROG_NAME = 'kf';
+
+var optionator = require('optionator')({
+    prepend: `Usage: ${PROG_NAME} [options...] flashcards-file\n`
+        + 'flashcards-file is a required parameter, it is expected to be a CSV file and it should have .csv extension.\n'
+        + '\n'
+        + 'Processing:\n'
+        + '  Flashcard-file is read. It should exist (except option --import is used).\n'
+        + '  Optionally file passed in via --import is read and new cards appended (deduplication against'
+        + '  existing content).\n'
+        + '  Optionally translation is done.\n'
+        + '  Optionally deduplication against sources passed via --dedup is done.\n'
+        + '  In case content of the cards file was modified, filew is updated on disk (backup is created).\n'
+        + '  Result is written to EPUB file.\n'
+        + '\n'
+        + 'Version 1.0',
+    typeAliases: {filename: 'String', directory: 'String'},
+    options: [{
+        option: 'help',
+        alias: 'h',
+        type: 'Boolean',
+        description: 'Display help.'
+    }, {
+        option: 'import',
+        alias: 'i',
+        type: 'filename',
+        description: 'Text file to import. If flashcards-file exists, new cards will be appended to it.'
+    }, {
+        option: 'translate',
+        alias: 't',
+        type: 'Boolean',
+        description: 'Try to translate lines in flashcards-file where translation is missing.'
+    }, {
+        option: 'dedup',
+        alias: 'f',
+        type: 'filename|directory',
+        description: 'Deduplicate against existing flashcard file(s) (in case directory was passes '
+            + 'then it is scanned for files and all files in it are used as deduplication source.'
+    }
+    ]
+});
+
 const CSV_DELIMITER = ';';
 
 const CSV_PARSE_OPTIONS = {
@@ -167,6 +209,14 @@ const writeToEPUBFile = (cards, fileName) => {
 };
 
 const main = (argv) => {
+    const options = optionator.parseArgv(process.argv);
+    const argsAfterOptions = options._;
+    const displayHelpAndQuit = options.help || (!Array.isArray(argsAfterOptions)) || (argsAfterOptions.length !== 1);
+    if (displayHelpAndQuit) {
+        console.log(optionator.generateHelp());
+        process.exit(1);
+    }
+
     if (process.argv.length < 2) {
         process.stdout.write('invalid arguments');
         process.exit(1);
@@ -192,25 +242,6 @@ const main = (argv) => {
 
 main(process.argv);
 
-// const Epub = require('epub-gen');
-// const option = {
-//     title: 'Alice\'s Adventures in Wonderland', // *Required, title of the book.
-//     author: 'Lewis Carroll', // *Required, name of the author.
-//     publisher: 'Macmillan & Co.', // optional
-//     //cover: 'http://demo.com/url-to-cover-image.jpg', // Url or File path, both ok.
-//     content: [
-//         {
-//             title: 'About the author', // Optional
-//             author: 'John Doe', // Optional
-//             data: '<h2>Charles Lutwidge Dodgson</h2>'
-//                 + '<div lang="en">Better known by the pen name Lewis Carroll...</div>' // pass html string
-//         },
-//         {
-//             title: 'Down the Rabbit Hole',
-//             data: '<p>Alice was beginning to get very tired...</p>'
-//         }
-//     ]
-// };
-// new Epub(option, 'aa.epub');
+
 
 
