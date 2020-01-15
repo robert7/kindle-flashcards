@@ -5,7 +5,8 @@ const
     csvParse = require('csv-parse/lib/sync'),
     csvStringify = require('csv-stringify'),
     translateText = require('@vitalets/google-translate-api'),
-    Promise = require('bluebird');
+    Promise = require('bluebird'),
+    Epub = require('epub-gen');
 
 const CSV_DELIMITER = ';';
 
@@ -144,26 +145,21 @@ const writeToPDFFile = (cards, fileName) => {
 };
 
 const writeToEPUBFile = (cards, fileName) => {
-    const Epub = require('epub-gen');
-
-    let counter = 0;
-
     const content = [];
     cards.forEach((card) => {
         content.push({
-            title: counter++,
-            data: `<p>${card[0]}</p>`
+            title: card[0],
+            data: `<p></p>`
         });
         content.push({
-            title: counter++,
-            data: `<p>${card[1]}</p>`
+            title: card[1],
+            data: `<p></p>`
         });
     });
 
     const option = {
-        title: 'flashcards',
-        author: 'flashcards',
-        //cover: "http://demo.com/url-to-cover-image.jpg", // Url or File path, both ok.
+        title: fileName,
+        author: 'kindle-flashcards',
         content
     };
 
@@ -183,7 +179,7 @@ const main = (argv) => {
     const inputFile = args[0];
     const writeCardsToCSVFile = () => writeToCSVFile(cards, inputFile + '.new');
     const writeCardsToPDFFile = () => writeToPDFFile(cards, inputFile + '.pdf');
-    const writeCardsToEPUBFile = () => writeToEPUBFile(cards, inputFile + '.pdf');
+    const writeCardsToEPUBFile = () => writeToEPUBFile(cards, inputFile + '.epub');
 
     readCardDataFromFile(inputFile, cards)
         .then(addTranslation)
@@ -194,27 +190,27 @@ const main = (argv) => {
         });
 };
 
-//main(process.argv);
+main(process.argv);
 
-const Epub = require('epub-gen');
-const option = {
-    title: 'Alice\'s Adventures in Wonderland', // *Required, title of the book.
-    author: 'Lewis Carroll', // *Required, name of the author.
-    publisher: 'Macmillan & Co.', // optional
-    //cover: 'http://demo.com/url-to-cover-image.jpg', // Url or File path, both ok.
-    content: [
-        {
-            title: 'About the author', // Optional
-            author: 'John Doe', // Optional
-            data: '<h2>Charles Lutwidge Dodgson</h2>'
-                + '<div lang="en">Better known by the pen name Lewis Carroll...</div>' // pass html string
-        },
-        {
-            title: 'Down the Rabbit Hole',
-            data: '<p>Alice was beginning to get very tired...</p>'
-        }
-    ]
-};
-new Epub(option, 'aa.epub');
+// const Epub = require('epub-gen');
+// const option = {
+//     title: 'Alice\'s Adventures in Wonderland', // *Required, title of the book.
+//     author: 'Lewis Carroll', // *Required, name of the author.
+//     publisher: 'Macmillan & Co.', // optional
+//     //cover: 'http://demo.com/url-to-cover-image.jpg', // Url or File path, both ok.
+//     content: [
+//         {
+//             title: 'About the author', // Optional
+//             author: 'John Doe', // Optional
+//             data: '<h2>Charles Lutwidge Dodgson</h2>'
+//                 + '<div lang="en">Better known by the pen name Lewis Carroll...</div>' // pass html string
+//         },
+//         {
+//             title: 'Down the Rabbit Hole',
+//             data: '<p>Alice was beginning to get very tired...</p>'
+//         }
+//     ]
+// };
+// new Epub(option, 'aa.epub');
 
 
