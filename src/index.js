@@ -208,30 +208,31 @@ const writeToEPUBFile = (cards, fileName) => {
     new Epub(option, fileName);
 };
 
+// flashcard file extension
+const FLASHCARD_FILE_EXT = 'csv';
+// ..with "." prepended
+const FLASHCARD_FILE_P_EXT = '.' + FLASHCARD_FILE_EXT;
+
 const main = (argv) => {
     const options = optionator.parseArgv(process.argv);
     const argsAfterOptions = options._;
-    const displayHelpAndQuit = options.help || (!Array.isArray(argsAfterOptions)) || (argsAfterOptions.length !== 1);
+    let displayHelpAndQuit = options.help || (!Array.isArray(argsAfterOptions)) || (argsAfterOptions.length !== 1);
+
+    const mainFlashCardFile = !displayHelpAndQuit ? argsAfterOptions[0] : undefined;
+    displayHelpAndQuit = (!displayHelpAndQuit) && mainFlashCardFile.endsWith(FLASHCARD_FILE_P_EXT);
+
     if (displayHelpAndQuit) {
         console.log(optionator.generateHelp());
         process.exit(1);
     }
 
-    if (process.argv.length < 2) {
-        process.stdout.write('invalid arguments');
-        process.exit(1);
-    }
-    // TODO meaningful command line parsing
-    const args = argv.slice(2);
-
     const cards = [];
 
-    const inputFile = args[0];
     const writeCardsToCSVFile = () => writeToCSVFile(cards, inputFile + '.new');
-    const writeCardsToPDFFile = () => writeToPDFFile(cards, inputFile + '.pdf');
+    //const writeCardsToPDFFile = () => writeToPDFFile(cards, inputFile + '.pdf');
     const writeCardsToEPUBFile = () => writeToEPUBFile(cards, inputFile + '.epub');
 
-    readCardDataFromFile(inputFile, cards)
+    readCardDataFromFile(mainFlashCardFile, cards)
         .then(addTranslation)
         .then(writeCardsToCSVFile)
         .then(writeCardsToEPUBFile)
