@@ -10,45 +10,7 @@ const
 
 const PROG_NAME = 'kf';
 
-var optionator = require('optionator')({
-    prepend: `Usage: ${PROG_NAME} [options...] flashcards-file\n`
-        + 'flashcards-file is a required parameter, it is expected to be a CSV file and it should have .csv extension.\n'
-        + '\n'
-        + 'Processing:\n'
-        + '  Flashcard-file is read. It should exist (except option --import is used).\n'
-        + '  Optionally file passed in via --import is read and new cards appended (deduplication against'
-        + '  existing content).\n'
-        + '  Optionally translation is done.\n'
-        + '  Optionally deduplication against sources passed via --dedup is done.\n'
-        + '  In case content of the cards file was modified, filew is updated on disk (backup is created).\n'
-        + '  Result is written to EPUB file.\n'
-        + '\n'
-        + 'Version 1.0',
-    typeAliases: {filename: 'String', directory: 'String'},
-    options: [{
-        option: 'help',
-        alias: 'h',
-        type: 'Boolean',
-        description: 'Display help.'
-    }, {
-        option: 'import',
-        alias: 'i',
-        type: 'filename',
-        description: 'Text file to import. If flashcards-file exists, new cards will be appended to it.'
-    }, {
-        option: 'translate',
-        alias: 't',
-        type: 'Boolean',
-        description: 'Try to translate lines in flashcards-file where translation is missing.'
-    }, {
-        option: 'dedup',
-        alias: 'f',
-        type: 'filename|directory',
-        description: 'Deduplicate against existing flashcard file(s) (in case directory was passes '
-            + 'then it is scanned for files and all files in it are used as deduplication source.'
-    }
-    ]
-});
+const optionator = require('optionator');
 
 const CSV_DELIMITER = ';';
 
@@ -77,7 +39,8 @@ const readCardDataFromFile = (fileName, cards) => {
         let lineNr = 0;
 
         let stream = fs.createReadStream(fileName)
-            // split on new line
+            // split on new line - regex variant: .pipe(es.split(/(\r?\n)/))
+            // https://github.com/dominictarr/event-stream#split-matcher
             .pipe(es.split())
             .pipe(
                 es.mapSync(function(line) {
@@ -168,6 +131,11 @@ const writeToCSVFile = (cards, fileName) => {
     });
 };
 
+/**
+ * PDF output - currently not used..
+ * @param cards
+ * @param fileName
+ */
 const writeToPDFFile = (cards, fileName) => {
     const PDFDocument = require('pdfkit');
     // Create a document
@@ -186,6 +154,11 @@ const writeToPDFFile = (cards, fileName) => {
     doc.end();
 };
 
+/**
+ * EPUB output.
+ * @param cards
+ * @param fileName
+ */
 const writeToEPUBFile = (cards, fileName) => {
     const content = [];
     cards.forEach((card) => {
@@ -213,23 +186,78 @@ const FLASHCARD_FILE_EXT = 'csv';
 // ..with "." prepended
 const FLASHCARD_FILE_P_EXT = '.' + FLASHCARD_FILE_EXT;
 
-const main = (argv) => {
-    const options = optionator.parseArgv(process.argv);
+/**
+ * Parse commandline options
+ * @param argv CLI arguments.
+ * @return {{help}|*} Parsed options
+ */
+const parseCommandLine = function(argv) {
+    const configuredOptionator = optionator({
+        prepend: `Usage: ${PROG_NAME} [options...] flashcards-file\n`
+            + 'flashcards-file is a required parameter, it is expected to be a CSV file and it should have .csv extension.\n'
+            + '\n'
+            + 'Processing:\n'
+            + '  Flashcard-file is read. It should exist (except option --import is used).\n'
+            + '  Optionally file passed in via --import is read and new cards appended (deduplication against'
+            + '  existing content).\n'
+            + '  Optionally translation is done.\n'
+            + '  Optionally deduplication against sources passed via --dedup is done.\n'
+            + '  In case content of the cards file was modified, filew is updated on disk (backup is created).\n'
+            + '  Result is written to EPUB file.\n'
+            + '\n'
+            + 'Version 1.0',
+        typeAliases: {filename: 'String', directory: 'String'},
+        options: [{
+            option: 'help',
+            alias: 'h',
+            type: 'Boolean',
+            description: 'Display help.'
+        }, {
+            option: 'import',
+            alias: 'i',
+            type: 'filename',
+            description: 'Text file to import. If flashcards-file exists, new cards will be appended to it.'
+        }, {
+            option: 'translate',
+            alias: 't',
+            type: 'Boolean',
+            description: 'Try to translate lines in flashcards-file where translation is missing.'
+        }, {
+            option: 'dedup',
+            alias: 'f',
+            type: 'filename|directory',
+            description: 'Deduplicate against existing flashcard file(s) (in case directory was passes '
+                + 'then it is scanned for files and all files in it are used as deduplication source.'
+        }
+        ]
+    });
+
+    const options = configuredOptionator.parseArgv(argv);
+    // non option arguments
     const argsAfterOptions = options._;
     let displayHelpAndQuit = options.help || (!Array.isArray(argsAfterOptions)) || (argsAfterOptions.length !== 1);
 
     const mainFlashCardFile = !displayHelpAndQuit ? argsAfterOptions[0] : undefined;
-    displayHelpAndQuit = (!displayHelpAndQuit) && mainFlashCardFile.endsWith(FLASHCARD_FILE_P_EXT);
+    displayHelpAndQuit = displayHelpAndQuit || (!mainFlashCardFile.endsWith(FLASHCARD_FILE_P_EXT));
 
+    options.mainFlashCardFile = mainFlashCardFile;
+    options.displayHelpAndQuit = displayHelpAndQuit;
     if (displayHelpAndQuit) {
-        console.log(optionator.generateHelp());
+        console.log(configuredOptionator.generateHelp());
+    }
+    return options;
+};
+
+const main = (argv) => {
+    const options = parseCommandLine(argv);
+    const {mainFlashCardFile, displayHelpAndQuit} = options;
+    if (displayHelpAndQuit) {
         process.exit(1);
     }
 
     const cards = [];
 
     const writeCardsToCSVFile = () => writeToCSVFile(cards, inputFile + '.new');
-    //const writeCardsToPDFFile = () => writeToPDFFile(cards, inputFile + '.pdf');
     const writeCardsToEPUBFile = () => writeToEPUBFile(cards, inputFile + '.epub');
 
     readCardDataFromFile(mainFlashCardFile, cards)
