@@ -27,6 +27,25 @@ const CSV_STRINGIFY_OPTIONS = {
 const CARD_COL_COUNT = 3;
 
 /**
+ * Add list of words (string array to cards).
+ * @param words
+ * @param cards
+ */
+const addCard = (words, cards) => {
+    // and the value at the 1st column should be non blank string
+    const keyword = words[0];
+    if (keyword.length === 0) {
+        return undefined;
+    }
+
+    while (words.length < CARD_COL_COUNT) {
+        words.push('');
+    }
+    cards.push(words);
+    return words;
+};
+
+/**
  * Read card data from CSV file.
  *
  * @param fileName
@@ -54,7 +73,7 @@ const readCardDataFromFile = (fileName, cards) => {
 
                     const parsedLines = csvParse(line, CSV_PARSE_OPTIONS);
                     // we expect parsed line to have exactly one line
-                    // and dirst item is expected to be string
+                    // and first item is expected to be string
                     const isLineValid = Array.isArray(parsedLines)
                         && (parsedLines.length === 1)
                         && Array.isArray(parsedLines[0])
@@ -63,14 +82,8 @@ const readCardDataFromFile = (fileName, cards) => {
                     if (isLineValid) {
                         // this is the line we got
                         const oneParsedLine = parsedLines[0];
-                        // and the value at the 1st column should be non blank string
-                        const keyword = oneParsedLine[0];
-                        if (keyword.length > 0) {
-                            while (oneParsedLine.length < CARD_COL_COUNT) {
-                                oneParsedLine.push('');
-                            }
-                            cards.push(oneParsedLine);
-                        }
+                        addCard(oneParsedLine, cards);
+
                     }
 
                     // resume the readstream, possibly from a callback
@@ -86,10 +99,11 @@ const readCardDataFromFile = (fileName, cards) => {
     });
 };
 
-const addTranslation = (cards) => {
+const addTranslations = (cards) => {
     // see http://bluebirdjs.com/docs/api/promise.mapseries.html
     // or http://bluebirdjs.com/docs/api/promise.each.html
 
+    console.log('Starting translation..');
     let cntTranslations = 0;
     return Promise.each(cards, (card) => {
         const validCard = Array.isArray(card)
@@ -109,8 +123,9 @@ const addTranslation = (cards) => {
 
         // TODO pass languages as parameters
         return translateText(keyword, {from: 'en', to: 'de'}).then((result) => {
-            //console.log(result);
-            card[1] = result.text;
+            const translatedKeyword = result.text;
+            console.log(`  translated ${keyword} to ${translatedKeyword}`);
+            card[1] = translatedKeyword;
             cntTranslations++;
         });
     }).then(() => {
@@ -248,22 +263,117 @@ const parseCommandLine = function(argv) {
     return options;
 };
 
+const normalizeTerm = (term) => {
+    if (typeof term !== 'string') {
+        return term;
+    }
+    return term.toLowerCase().replace(/\s*/, ' ');
+};
+
+const addTermToDedupSet = (term, dedupSet) => {
+    term = normalizeTerm(term);
+    if (!term) {
+        return;
+    }
+
+    dedupSet.add(term);
+};
+
+const isDuplicateCardTerm = (term, dedupSet) => {
+    term = normalizeTerm(term);
+    if (!term) {
+        return true;
+    }
+    return dedupSet.has(term);
+};
+
+const REGEX_IS_NUM = /^\d/;
+
+const isIgnoredTerm = (term) => {
+    return (term.length < 3) || REGEX_IS_NUM.test(term);
+};
+
+const addCardToDedupSet = (card, dedupSet) => {
+    if (!card) {
+        return;
+    }
+    addTermToDedupSet(card[0], dedupSet);
+};
+
+const addCardsToDedupSet = (cards, dedupSet) => {
+    cards.forEach((card) => {
+        addCardToDedupSet(card, dedupSet);
+    });
+};
+
+const importFile = (cards, importFileName, dedupSet) => {
+    if (!importFileName || (!fs.existsSync(importFileName))) {
+        if (importFileName) {
+            console.log(`File ${importFileName} requested to be imported, but it seems not to exist.. Ignoring..`);
+
+        }
+        return Promise.resolve();
+    }
+
+    return new Promise((resolve, reject) => {
+
+        let wordNo = 0;
+        let addedCards = 0;
+
+        // https://github.com/dominictarr/event-stream#split-matcher
+        //const WORD_REGEX = /(\s|[",.;:#+*$/_=-])/;
+        const WORD_REGEX = /\b/;
+
+        let stream = fs.createReadStream(importFileName)
+            .pipe(es.split(WORD_REGEX))
+            .pipe(
+                es.mapSync(function(term) {
+                    stream.pause();                                 // pause the readstream
+                    wordNo += 1;
+
+                    if (!isDuplicateCardTerm(term, dedupSet) && (!isIgnoredTerm(term))) {
+                        console.log(`  adding term ${term}`);
+                        const card = addCard([term], cards);
+                        addCardToDedupSet(card, dedupSet);
+                        addedCards++;
+                    } else {
+                        if (term.length > 0) {
+                            console.log(`  ignoring skip/duplicate ${term}`);
+                        }
+                    }
+
+                    stream.resume();                                // resume the readstream
+                }).on('error', function(err) {
+                    console.log(`Error while reading file ${importFileName} (at word ${wordNo})`, err);
+                    reject();
+                }).on('end', function() {
+                    console.log(`Read entire file ${importFileName} (${wordNo} words, ${addedCards} new cards added)`);
+                    resolve(cards);
+                })
+            );
+    });
+
+};
+
 const main = (argv) => {
     const options = parseCommandLine(argv);
-    const {mainFlashCardFile, displayHelpAndQuit} = options;
+    const {mainFlashCardFile, displayHelpAndQuit, import: importFileName} = options;
     if (displayHelpAndQuit) {
         process.exit(1);
     }
 
     const cards = [];
+    const dedupSet = new Set();
 
-    const writeCardsToCSVFile = () => writeToCSVFile(cards, inputFile + '.new');
-    const writeCardsToEPUBFile = () => writeToEPUBFile(cards, inputFile + '.epub');
+    const mainCardsOutputFile = mainFlashCardFile + '.new';
+    const outputEPUBFile = mainFlashCardFile + '.epub';
 
     readCardDataFromFile(mainFlashCardFile, cards)
-        .then(addTranslation)
-        .then(writeCardsToCSVFile)
-        .then(writeCardsToEPUBFile)
+        .then(() => addCardsToDedupSet(cards, dedupSet))
+        .then(() => importFile(cards, importFileName, dedupSet))
+        .then(() => addTranslations(cards))
+        .then(() => writeToCSVFile(cards, mainCardsOutputFile))
+        .then(() => writeToEPUBFile(cards, outputEPUBFile))
         .then(() => {
             console.log('All done.');
         });
