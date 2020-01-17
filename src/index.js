@@ -144,6 +144,7 @@ const writeToCSVFile = (cards, fileName) => {
             console.log(`The file ${fileName} was saved.`);
         });
     });
+    return Promise.resolve();
 };
 
 /**
@@ -177,12 +178,15 @@ const writeToPDFFile = (cards, fileName) => {
 const writeToEPUBFile = (cards, fileName) => {
     const content = [];
     cards.forEach((card) => {
+        const keyword = card[0];
+        const keywordTransl = card[1];
+        const keywordComment = card[2];
         content.push({
-            title: card[0],
-            data: `<p></p>`
+            title: keyword,
+            data: `<p>${keywordComment}</p>`
         });
         content.push({
-            title: card[1],
+            title: keywordTransl,
             data: `<p></p>`
         });
     });
@@ -194,6 +198,7 @@ const writeToEPUBFile = (cards, fileName) => {
     };
 
     new Epub(option, fileName);
+    return Promise.resolve();
 };
 
 // flashcard file extension
@@ -267,7 +272,7 @@ const normalizeTerm = (term) => {
     if (typeof term !== 'string') {
         return term;
     }
-    return term.toLowerCase().replace(/\s*/, ' ');
+    return term.toLowerCase().replace(/\s*/, ' ').trim();
 };
 
 const addTermToDedupSet = (term, dedupSet) => {
@@ -304,6 +309,7 @@ const addCardsToDedupSet = (cards, dedupSet) => {
     cards.forEach((card) => {
         addCardToDedupSet(card, dedupSet);
     });
+    return Promise.resolve();
 };
 
 const importFile = (cards, importFileName, dedupSet) => {
@@ -321,8 +327,8 @@ const importFile = (cards, importFileName, dedupSet) => {
         let addedCards = 0;
 
         // https://github.com/dominictarr/event-stream#split-matcher
-        //const WORD_REGEX = /(\s|[",.;:#+*$/_=-])/;
-        const WORD_REGEX = /\b/;
+        //const WORD_REGEX = //;
+        const WORD_REGEX = /(\b|\s|[",.;:#+*$/_=-])/;
 
         let stream = fs.createReadStream(importFileName)
             .pipe(es.split(WORD_REGEX))
@@ -330,15 +336,16 @@ const importFile = (cards, importFileName, dedupSet) => {
                 es.mapSync(function(term) {
                     stream.pause();                                 // pause the readstream
                     wordNo += 1;
+                    term = term.trim();
 
                     if (!isDuplicateCardTerm(term, dedupSet) && (!isIgnoredTerm(term))) {
-                        console.log(`  adding term ${term}`);
+                        console.log(`  adding term "${term}"`);
                         const card = addCard([term], cards);
                         addCardToDedupSet(card, dedupSet);
                         addedCards++;
                     } else {
                         if (term.length > 0) {
-                            console.log(`  ignoring skip/duplicate ${term}`);
+                            // console.log(`  ignoring skip/duplicate "${term}"`);
                         }
                     }
 
@@ -355,6 +362,18 @@ const importFile = (cards, importFileName, dedupSet) => {
 
 };
 
+const filterOutTrivials = (cards) => {
+    return cards.filter((card) => {
+        const keyword = normalizeTerm(card[0]);
+        const keywordTr = normalizeTerm(card[1]);
+        const isTrivial = (!keyword) || (keyword === keywordTr);
+        if (isTrivial) {
+            console.log(`Filtering out trivial ${keyword} to ${keywordTr}`);
+        }
+        return !isTrivial;
+    });
+};
+
 const main = (argv) => {
     const options = parseCommandLine(argv);
     const {mainFlashCardFile, displayHelpAndQuit, import: importFileName} = options;
@@ -362,7 +381,7 @@ const main = (argv) => {
         process.exit(1);
     }
 
-    const cards = [];
+    let cards = [];
     const dedupSet = new Set();
 
     const mainCardsOutputFile = mainFlashCardFile + '.new';
@@ -372,6 +391,10 @@ const main = (argv) => {
         .then(() => addCardsToDedupSet(cards, dedupSet))
         .then(() => importFile(cards, importFileName, dedupSet))
         .then(() => addTranslations(cards))
+        .then(() => {
+            // warn. we modify the array inplace; may not be as clean as it should be
+            cards = filterOutTrivials(cards);
+        })
         .then(() => writeToCSVFile(cards, mainCardsOutputFile))
         .then(() => writeToEPUBFile(cards, outputEPUBFile))
         .then(() => {
