@@ -6,10 +6,13 @@ const
     csvStringify = require('csv-stringify'),
     translateText = require('@vitalets/google-translate-api'),
     Promise = require('bluebird'),
-    Epub = require('epub-gen');
+    // https://www.npmjs.com/package/epub-gen
+    EPub = require('epub-gen'),
+    moment = require('moment');
 
 const PROG_NAME = 'kf';
 
+// https://www.npmjs.com/package/optionator
 const optionator = require('optionator');
 
 const CSV_DELIMITER = ';';
@@ -24,7 +27,10 @@ const CSV_STRINGIFY_OPTIONS = {
     delimiter: CSV_DELIMITER
 };
 
-const CARD_COL_COUNT = 3;
+const COL_KEY = 0;
+const COL_VALUE = 1;
+const COL_COMMENT = 2;
+const CARD_COL_COUNT = COL_COMMENT + 1;
 
 /**
  * Add list of words (string array to cards).
@@ -33,7 +39,7 @@ const CARD_COL_COUNT = 3;
  */
 const addCard = (words, cards) => {
     // and the value at the 1st column should be non blank string
-    const keyword = words[0];
+    const keyword = words[COL_KEY];
     if (keyword.length === 0) {
         return undefined;
     }
@@ -77,7 +83,7 @@ const readCardDataFromFile = (fileName, cards) => {
                     const isLineValid = Array.isArray(parsedLines)
                         && (parsedLines.length === 1)
                         && Array.isArray(parsedLines[0])
-                        && typeof parsedLines[0][0] == 'string';
+                        && typeof parsedLines[0][COL_KEY] == 'string';
 
                     if (isLineValid) {
                         // this is the line we got
@@ -108,14 +114,14 @@ const addTranslations = (cards) => {
     return Promise.each(cards, (card) => {
         const validCard = Array.isArray(card)
             && (card.length >= CARD_COL_COUNT)
-            && (typeof card[0] === 'string');
+            && (typeof card[COL_KEY] === 'string');
 
         if (!validCard) {
             return card;
         }
 
-        const keyword = card[0];
-        const translation = card[1];
+        const keyword = card[COL_KEY];
+        const translation = card[COL_VALUE];
         const toBeTranslated = (!translation) || translation.length === 0;
         if (!toBeTranslated) {
             return card;
@@ -125,7 +131,7 @@ const addTranslations = (cards) => {
         return translateText(keyword, {from: 'en', to: 'de'}).then((result) => {
             const translatedKeyword = result.text;
             console.log(`  translated ${keyword} to ${translatedKeyword}`);
-            card[1] = translatedKeyword;
+            card[COL_VALUE] = translatedKeyword;
             cntTranslations++;
         });
     }).then(() => {
@@ -191,14 +197,15 @@ const writeToEPUBFile = (cards, fileName) => {
         });
     });
 
+    const timestamp = moment().format('DD.MM.YYYY');
+    ;
     const option = {
-        title: fileName,
+        title: `Flashcards ${timestamp}`,
         author: 'kindle-flashcards',
         content
     };
 
-    new Epub(option, fileName);
-    return Promise.resolve();
+    return new EPub(option, fileName).promise;
 };
 
 // flashcard file extension
@@ -241,13 +248,27 @@ const parseCommandLine = function(argv) {
             option: 'translate',
             alias: 't',
             type: 'Boolean',
-            description: 'Try to translate lines in flashcards-file where translation is missing.'
+            description: 'Try to translate lines in flashcards-file where translation is missing.',
+            default: 'true'
         }, {
             option: 'dedup',
             alias: 'f',
             type: 'filename|directory',
-            description: 'Deduplicate against existing flashcard file(s) (in case directory was passes '
+            description: '[NOT impl. yet].. Deduplicate against existing flashcard file(s) (in case directory was passes '
                 + 'then it is scanned for files and all files in it are used as deduplication source.'
+        }, {
+            option: 'shuffle',
+            type: 'Boolean',
+            description: 'If not used: reorder file (1: card with notes, 2: card without notes, 3: cards where'
+                + ' note starts with "-".\nInside of the groups the order is random.\n'
+                + '(Therefore mark cards which you want go fist with note, cards which should go last with "-").',
+            default: 'true'
+        }, {
+            option: 'trivials',
+            type: 'Boolean',
+            description: 'If not used: filter out trivials. Lines with identical key & value (question '
+                + 'and answer) are filtered out.',
+            default: 'true'
         }
         ]
     });
@@ -374,9 +395,58 @@ const filterOutTrivials = (cards) => {
     });
 };
 
+/**
+ * Shuffles array in place.
+ * @param {Array} a items An array containing the items.
+ */
+function shuffle(a) {
+    var j, x, i;
+    for (i = a.length - 1; i > 0; i--) {
+        j = Math.floor(Math.random() * (i + 1));
+        x = a[i];
+        a[i] = a[j];
+        a[j] = x;
+    }
+    return a;
+}
+
+const shuffleCards = (cards) => {
+    const prio1 = [];
+    const prio2 = [];
+    const prio3 = [];
+
+    cards.forEach((card) => {
+        const cardComment = card[COL_COMMENT];
+        const isSkip = cardComment.startsWith('-');
+        const isNonBlank = !!cardComment;
+
+        let targetList;
+        if (isSkip) {
+            targetList = prio3;
+        } else if (isNonBlank) {
+            targetList = prio1;
+        } else {
+            targetList = prio2;
+        }
+        targetList.push(card);
+    });
+    shuffle(prio1);
+    shuffle(prio2);
+    shuffle(prio3);
+
+    return prio1.concat(prio2).concat(prio3);
+};
+
 const main = (argv) => {
     const options = parseCommandLine(argv);
-    const {mainFlashCardFile, displayHelpAndQuit, import: importFileName} = options;
+    const {
+        mainFlashCardFile,
+        displayHelpAndQuit,
+        import: importFileName,
+        translate: doTranslation,
+        shuffle: doShuffle,
+        trivials: doFilterOutTrivials
+    } = options;
     if (displayHelpAndQuit) {
         process.exit(1);
     }
@@ -384,21 +454,42 @@ const main = (argv) => {
     let cards = [];
     const dedupSet = new Set();
 
-    const mainCardsOutputFile = mainFlashCardFile + '.new';
-    const outputEPUBFile = mainFlashCardFile + '.epub';
+    const mainCardsOutputFile = mainFlashCardFile.replace(/\.csv/, '-new.csv');
+    const outputEPUBFile = mainFlashCardFile.replace(/\.csv/, '.epub');
+    const outputMOBIFile = mainFlashCardFile.replace(/\.csv/, '.mobi');
+    if ((mainCardsOutputFile === mainFlashCardFile) || (outputEPUBFile === mainFlashCardFile)) {
+        console.log('Failed to generate output filenames (input filename should have extension ".csv"');
+    }
+    console.log(`CSV output: ${mainCardsOutputFile}, EPUB output: ${outputEPUBFile}`);
 
     readCardDataFromFile(mainFlashCardFile, cards)
         .then(() => addCardsToDedupSet(cards, dedupSet))
         .then(() => importFile(cards, importFileName, dedupSet))
-        .then(() => addTranslations(cards))
+        .then(() => {
+            if (doTranslation) {
+                addTranslations(cards);
+            }
+        })
         .then(() => {
             // warn. we modify the array inplace; may not be as clean as it should be
-            cards = filterOutTrivials(cards);
+            if (doFilterOutTrivials) {
+                cards = filterOutTrivials(cards);
+            }
+        })
+        .then(() => {
+            // warn. we modify the array inplace
+            if (doShuffle) {
+                cards = shuffleCards(cards);
+            }
         })
         .then(() => writeToCSVFile(cards, mainCardsOutputFile))
-        .then(() => writeToEPUBFile(cards, outputEPUBFile))
         .then(() => {
-            console.log('All done.');
+            return writeToEPUBFile(cards, outputEPUBFile);
+        })
+        .then(() => {
+            console.log('\nYou can use Calibre to generate the MOBI file.');
+            console.log(`Run: ebook-convert ${outputEPUBFile} ${outputMOBIFile}`);
+            console.log('\nAll done.');
         });
 };
 
