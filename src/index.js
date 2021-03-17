@@ -220,58 +220,64 @@ const FLASHCARD_FILE_P_EXT = '.' + FLASHCARD_FILE_EXT;
  */
 const parseCommandLine = function(argv) {
     const configuredOptionator = optionator({
-        prepend: `Usage: ${PROG_NAME} [options...] flashcards-file\n`
-            + 'flashcards-file is a required parameter, it is expected to be a CSV file and it should have .csv extension.\n'
-            + '\n'
-            + 'Processing:\n'
-            + '  Flashcard-file is read. It should exist (except option --import is used).\n'
-            + '  Optionally file passed in via --import is read and new cards appended (deduplication against'
-            + '  existing content).\n'
-            + '  Optionally translation is done.\n'
-            + '  Optionally deduplication against sources passed via --dedup is done.\n'
-            + '  In case content of the cards file was modified, filew is updated on disk (backup is created).\n'
-            + '  Result is written to EPUB file.\n'
-            + '\n'
-            + 'Version 1.0',
-        typeAliases: {filename: 'String', directory: 'String'},
-        options: [{
-            option: 'help',
-            alias: 'h',
-            type: 'Boolean',
-            description: 'Display help.'
-        }, {
-            option: 'import',
-            alias: 'i',
-            type: 'filename',
-            description: 'Text file to import. If flashcards-file exists, new cards will be appended to it.'
-        }, {
-            option: 'translate',
-            alias: 't',
-            type: 'Boolean',
-            description: 'Try to translate lines in flashcards-file where translation is missing.',
-            default: 'true'
-        }, {
-            option: 'dedup',
-            alias: 'f',
-            type: 'filename|directory',
-            description: '[NOT impl. yet].. Deduplicate against existing flashcard file(s) (in case directory was passes '
-                + 'then it is scanned for files and all files in it are used as deduplication source.'
-        }, {
-            option: 'shuffle',
-            type: 'Boolean',
-            description: 'If not used: reorder file (1: card with notes, 2: card without notes, 3: cards where'
-                + ' note starts with "-".\nInside of the groups the order is random.\n'
-                + '(Therefore mark cards which you want go fist with note, cards which should go last with "-").',
-            default: 'true'
-        }, {
-            option: 'trivials',
-            type: 'Boolean',
-            description: 'If not used: filter out trivials. Lines with identical key & value (question '
-                + 'and answer) are filtered out.',
-            default: 'true'
-        }
-        ]
-    });
+            prepend: `Usage: ${PROG_NAME} [options...] flashcards-file\n`
+                + 'flashcards-file is a required parameter, it is expected to be a CSV file and it should have .csv extension.\n'
+                + '\n'
+                + 'Processing:\n'
+                + '  Flashcard-file is read. It should exist (except option --import is used).\n'
+                + '  Optionally file passed in via --import is read and new cards appended (deduplication against'
+                + '  existing content).\n'
+                + '  Optionally translation is done.\n'
+                + '  Optionally deduplication against sources passed via --dedup is done.\n'
+                + '  In case content of the cards file was modified, file is updated on disk (backup is created).\n'
+                + '  Result is written to EPUB file.\n'
+                + '\n'
+                + 'Version 1.0',
+            typeAliases: {filename: 'String', directory: 'String'},
+            options: [{
+                option: 'help',
+                alias: 'h',
+                type: 'Boolean',
+                description: 'Display help.'
+            }, {
+                option: 'import',
+                alias: 'i',
+                type: 'filename',
+                description: 'Text file to import. If flashcards-file exists, new cards will be appended to it.'
+            }, {
+                option: 'translate',
+                alias: 't',
+                type: 'Boolean',
+                description: 'Try to translate lines in flashcards-file where translation is missing.',
+                default: 'true'
+            }, {
+                option: 'dedup',
+                alias: 'f',
+                type: 'filename|directory',
+                description: '[NOT impl. yet].. Deduplicate against existing flashcard file(s) (in case directory was passes '
+                    + 'then it is scanned for files and all files in it are used as deduplication source.'
+            }, {
+                // handling of Boolean in optionator: https://www.npmjs.com/package/optionator
+                // .. boolean flags (eg. --problemo, -p) which take no value and result in a true
+                // if they are present, the falsey undefined if they are not present, or false if present and explicitly
+                // prefixed with no (eg. --no-problemo)
+                option: 'shuffle',
+                type: 'Boolean',
+                description: 'If not used: reorder file (1: card with notes, 2: card without notes, 3: cards where'
+                    + ' note starts with "-".\nInside of the groups the order is random.\n'
+                    + '(Therefore mark cards which you want go first with note, cards which should go last with "-").'
+                    + 'Note: as default is true, to disable, you need to pass --no-shuffle.'
+                default: 'true'
+            }, {
+                option: 'trivials',
+                type: 'Boolean',
+                description: 'If not used: filter out trivials. Lines with identical key & value (question '
+                    + 'and answer) are filtered out. Default: true - see previous param for disabling.',
+                default: 'true'
+            }
+            ]
+        })
+    ;
 
     const options = configuredOptionator.parseArgv(argv);
     // non option arguments
