@@ -58,7 +58,7 @@ const addCard = (words, cards) => {
  * @param cards
  * @return {Promise}
  */
-const readCardDataFromFile = (fileName, cards) => {
+async function readCardDataFromFile(fileName, cards) {
     return new Promise((resolve, reject) => {
 
         let lineNr = 0;
@@ -103,9 +103,9 @@ const readCardDataFromFile = (fileName, cards) => {
                 })
             );
     });
-};
+}
 
-const addTranslations = (cards) => {
+async function addTranslations(cards) {
     // see http://bluebirdjs.com/docs/api/promise.mapseries.html
     // or http://bluebirdjs.com/docs/api/promise.each.html
 
@@ -138,9 +138,9 @@ const addTranslations = (cards) => {
         console.log(`${cntTranslations} translations added..`);
         return cards;
     });
-};
+}
 
-const writeToCSVFile = (cards, fileName) => {
+async function writeToCSVFile(cards, fileName) {
     // stringify(records, [options], callback).
     csvStringify(cards, CSV_STRINGIFY_OPTIONS, (err, output) => {
         fs.writeFile(fileName, output, function(err) {
@@ -151,7 +151,7 @@ const writeToCSVFile = (cards, fileName) => {
         });
     });
     return Promise.resolve();
-};
+}
 
 /**
  * PDF output - currently not used..
@@ -181,7 +181,8 @@ const writeToPDFFile = (cards, fileName) => {
  * @param cards
  * @param fileName
  */
-const writeToEPUBFile = (cards, fileName) => {
+async function writeToEPUBFile(cards, fileName) {
+    console.log('Starting EPUB conversion..');
     const content = [];
     cards.forEach((card) => {
         const keyword = card[0];
@@ -198,7 +199,7 @@ const writeToEPUBFile = (cards, fileName) => {
     });
 
     const timestamp = moment().format('DD.MM.YYYY');
-    ;
+
     const option = {
         title: `Flashcards ${timestamp}`,
         author: 'kindle-flashcards',
@@ -206,7 +207,7 @@ const writeToEPUBFile = (cards, fileName) => {
     };
 
     return new EPub(option, fileName).promise;
-};
+}
 
 // flashcard file extension
 const FLASHCARD_FILE_EXT = 'csv';
@@ -275,10 +276,11 @@ const parseCommandLine = function(argv) {
                     + 'Default behaviour: Lines with identical key & value (question and answer) are filtered out. '
                     + 'Default: true - see previous param for disabling.',
                 default: 'true'
-            },{
+            }, {
                 option: 'epub',
                 type: 'Boolean',
-                description: 'Generate EPUB file.'
+                description: 'Generate EPUB file. EPUB can then be converted to MOBI (Kindle) using Calibre. '
+                    + 'Commandline will be provided.'
             }
             ]
         })
@@ -337,14 +339,14 @@ const addCardToDedupSet = (card, dedupSet) => {
     addTermToDedupSet(card[0], dedupSet);
 };
 
-const addCardsToDedupSet = (cards, dedupSet) => {
+async function addCardsToDedupSet(cards, dedupSet) {
     cards.forEach((card) => {
         addCardToDedupSet(card, dedupSet);
     });
     return Promise.resolve();
-};
+}
 
-const importFile = (cards, importFileName, dedupSet) => {
+async function importFile(cards, importFileName, dedupSet) {
     if (!importFileName || (!fs.existsSync(importFileName))) {
         if (importFileName) {
             console.log(`File ${importFileName} requested to be imported, but it seems not to exist.. Ignoring..`);
@@ -392,9 +394,9 @@ const importFile = (cards, importFileName, dedupSet) => {
             );
     });
 
-};
+}
 
-const filterOutTrivials = (cards) => {
+async function filterOutTrivials(cards) {
     return cards.filter((card) => {
         const keyword = normalizeTerm(card[0]);
         const keywordTr = normalizeTerm(card[1]);
@@ -404,7 +406,7 @@ const filterOutTrivials = (cards) => {
         }
         return !isTrivial;
     });
-};
+}
 
 /**
  * Shuffles array in place.
@@ -421,7 +423,8 @@ function shuffle(a) {
     return a;
 }
 
-const shuffleCards = (cards) => {
+async function shuffleCards(cards) {
+    console.log('Shuffling..');
     const prio1 = [];
     const prio2 = [];
     const prio3 = [];
@@ -446,9 +449,9 @@ const shuffleCards = (cards) => {
     shuffle(prio3);
 
     return prio1.concat(prio2).concat(prio3);
-};
+}
 
-const main = (argv) => {
+async function main(argv) {
     const options = parseCommandLine(argv);
     const {
         mainFlashCardFile,
@@ -474,38 +477,33 @@ const main = (argv) => {
     }
     console.log(`CSV output: ${mainCardsOutputFile}, EPUB output: ${outputEPUBFile}`);
 
-    console.log(`EPUB output: ${paramEpub}`);
+    await readCardDataFromFile(mainFlashCardFile, cards);
+    await addCardsToDedupSet(cards, dedupSet);
+    await importFile(cards, paramImportFileName, dedupSet);
 
-    readCardDataFromFile(mainFlashCardFile, cards)
-        .then(() => addCardsToDedupSet(cards, dedupSet))
-        .then(() => importFile(cards, paramImportFileName, dedupSet))
-        .then(() => {
-            if (paramTranslate) {
-                addTranslations(cards);
-            }
-        })
-        .then(() => {
-            // warn. we modify the array inplace; may not be as clean as it should be
-            if (paramTrivials) {
-                cards = filterOutTrivials(cards);
-            }
-        })
-        .then(() => {
-            // warn. we modify the array inplace
-            if (paramShuffle) {
-                cards = shuffleCards(cards);
-            }
-        })
-        .then(() => writeToCSVFile(cards, mainCardsOutputFile))
-        .then(() => {
-            return writeToEPUBFile(cards, outputEPUBFile);
-        })
-        .then(() => {
-            console.log('\nYou can use Calibre to generate the MOBI file.');
-            console.log(`Run: ebook-convert ${outputEPUBFile} ${outputMOBIFile}`);
-            console.log('\nAll done.');
-        });
-};
+    if (paramTranslate) {
+        await addTranslations(cards);
+    }
+
+    if (paramTrivials) {
+        cards = await filterOutTrivials(cards);
+    }
+
+    if (paramShuffle) {
+        cards = await shuffleCards(cards);
+    }
+
+    await writeToCSVFile(cards, mainCardsOutputFile);
+
+    if (paramEpub) {
+        await writeToEPUBFile(cards, outputEPUBFile);
+        console.log('\nYou can use Calibre to generate the MOBI file.');
+        console.log(`Run: ebook-convert ${outputEPUBFile} ${outputMOBIFile}`);
+    } else {
+        console.log('No EPUB output..');
+    }
+    console.log('All done.');
+}
 
 main(process.argv);
 
