@@ -1,5 +1,8 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="debug" type="NodeJSConfigurationType" application-parameters="tmp/01.csv " path-to-js-file="src/index.js" working-dir="$PROJECT_DIR$">
+  <configuration default="false" name="debug" type="NodeJSConfigurationType" application-parameters="tmp/01.csv  --audio" path-to-js-file="src/index.js" working-dir="$PROJECT_DIR$">
+    <envs>
+      <env name="GOOGLE_APPLICATION_CREDENTIALS" value="$USER_HOME$/rss-learning-9e35fa1cd2de.json" />
+    </envs>
     <method v="2" />
   </configuration>
 </component>

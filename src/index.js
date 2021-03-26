@@ -8,7 +8,9 @@ const
     Promise = require('bluebird'),
     // https://www.npmjs.com/package/epub-gen
     EPub = require('epub-gen'),
-    moment = require('moment');
+    moment = require('moment'),
+    {synthesizeSsml} = require('./gcpTextToSpeech'),
+    {concatMp3Files} = require('./mp3Util');
 
 const PROG_NAME = 'kf';
 
@@ -281,6 +283,10 @@ const parseCommandLine = function(argv) {
                 type: 'Boolean',
                 description: 'Generate EPUB file. EPUB can then be converted to MOBI (Kindle) using Calibre. '
                     + 'Commandline will be provided.'
+            }, {
+                option: 'audio',
+                type: 'Boolean',
+                description: 'Generate mp3 audio version. Experimental.'
             }
             ]
         })
@@ -451,6 +457,64 @@ async function shuffleCards(cards) {
     return prio1.concat(prio2).concat(prio3);
 }
 
+function generateOutputFileName(mainFlashCardFile, newFileEnding) {
+    return mainFlashCardFile.replace(/\.csv/, newFileEnding);
+}
+
+const DEFAULT_VOICE1 = {
+    name: 'en-US-Wavenet-C',
+    ssmlGender: 'FEMALE',
+    languageCode: 'en-US'
+};
+
+const DEFAULT_VOICE2 = {
+    name: 'de-DE-Standard-A',
+    ssmlGender: 'FEMALE',
+    languageCode: 'de-DE'
+};
+
+DEFAULT_SPEAKING_RATE = 0.8;
+
+function ssmlWrap(text, breakTime) {
+    if (!text || text === '') {
+        return null;
+    }
+    return `<speak><p>${text}</p><break time="${breakTime}s"/></speak>`;
+}
+
+async function writeToMP3FileOne(mp3List, card, index, outputMP3FileBase) {
+    const keyword = card[0];
+    const keywordTransl = card[1];
+    const keywordComment = card[2];
+    const fileName1 = `${outputMP3FileBase}-${index}-1.mp3`;
+    const ssml1 = ssmlWrap(keyword, 3);
+    await synthesizeSsml(ssml1, fileName1, DEFAULT_VOICE1, DEFAULT_SPEAKING_RATE);
+    mp3List.push(fileName1);
+
+    const fileName2 = `${outputMP3FileBase}-${index}-2.mp3`;
+    const ssml2 = ssmlWrap(keywordTransl, 2);
+    await synthesizeSsml(ssml2, fileName2, DEFAULT_VOICE2, DEFAULT_SPEAKING_RATE);
+    mp3List.push(fileName2);
+}
+
+async function writeToMP3File(cards, outputMP3FileBase) {
+    const cardsS = cards.slice(0, 3);
+
+    var index = 0;
+    const mp3Files = [];
+
+    for (const card of cardsS) {
+        await writeToMP3FileOne(mp3Files, card, index, outputMP3FileBase);
+        index++;
+    }
+    const resultMp3 = `${outputMP3FileBase}.mp3`;
+
+    const concatOK = await concatMp3Files(mp3Files, resultMp3);
+    if (!concatOK) {
+        console.log('concat failed');
+    }
+}
+
 async function main(argv) {
     const options = parseCommandLine(argv);
     const {
@@ -460,6 +524,7 @@ async function main(argv) {
         translate: paramTranslate,
         shuffle: paramShuffle,
         trivials: paramTrivials,
+        audio: paramAudio,
         epub: paramEpub
     } = options;
     if (displayHelpAndQuit) {
@@ -469,13 +534,11 @@ async function main(argv) {
     let cards = [];
     const dedupSet = new Set();
 
-    const mainCardsOutputFile = mainFlashCardFile.replace(/\.csv/, '-new.csv');
-    const outputEPUBFile = mainFlashCardFile.replace(/\.csv/, '.epub');
-    const outputMOBIFile = mainFlashCardFile.replace(/\.csv/, '.mobi');
-    if ((mainCardsOutputFile === mainFlashCardFile) || (outputEPUBFile === mainFlashCardFile)) {
+    const mainCardsOutputFile = generateOutputFileName(mainFlashCardFile, '-new.csv');
+    if (mainCardsOutputFile === mainFlashCardFile) {
         console.log('Failed to generate output filenames (input filename should have extension ".csv"');
     }
-    console.log(`CSV output: ${mainCardsOutputFile}, EPUB output: ${outputEPUBFile}`);
+    console.log(`CSV output: ${mainCardsOutputFile}`);
 
     await readCardDataFromFile(mainFlashCardFile, cards);
     await addCardsToDedupSet(cards, dedupSet);
@@ -496,12 +559,23 @@ async function main(argv) {
     await writeToCSVFile(cards, mainCardsOutputFile);
 
     if (paramEpub) {
+        const outputEPUBFile = generateOutputFileName(mainFlashCardFile, '.epub');
+        const outputMOBIFile = generateOutputFileName(mainFlashCardFile, '.mobi');
+        console.log(`EPUB output: ${outputEPUBFile}`);
         await writeToEPUBFile(cards, outputEPUBFile);
         console.log('\nYou can use Calibre to generate the MOBI file.');
         console.log(`Run: ebook-convert ${outputEPUBFile} ${outputMOBIFile}`);
     } else {
         console.log('No EPUB output..');
     }
+    if (paramAudio) {
+        console.log('About to generate audio version..');
+        const outputMP3FileBase = generateOutputFileName(mainFlashCardFile, '');
+        console.log(`MP3 output base: ${outputMP3FileBase}`);
+        await writeToMP3File(cards, outputMP3FileBase);
+
+    }
+
     console.log('All done.');
 }
 
