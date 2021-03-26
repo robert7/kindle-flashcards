@@ -468,6 +468,12 @@ const DEFAULT_VOICE1 = {
 };
 
 const DEFAULT_VOICE2 = {
+    name: 'sk-SK-Standard-A',
+    ssmlGender: 'FEMALE',
+    languageCode: 'sk-SK'
+};
+
+const DEFAULT_VOICE3 = {
     name: 'de-DE-Standard-A',
     ssmlGender: 'FEMALE',
     languageCode: 'de-DE'
@@ -476,29 +482,37 @@ const DEFAULT_VOICE2 = {
 DEFAULT_SPEAKING_RATE = 0.8;
 
 function ssmlWrap(text, breakTime) {
-    if (!text || text === '') {
-        return null;
-    }
-    return `<speak><p>${text}</p><break time="${breakTime}s"/></speak>`;
+    const sentence = (!text || text === '') ? '' : `<p>${text}</p>`;
+
+    return `<speak>${sentence}<break time="${breakTime}s"/></speak>`;
 }
 
 async function writeToMP3FileOne(mp3List, card, index, outputMP3FileBase) {
     const keyword = card[0];
     const keywordTransl = card[1];
-    const keywordComment = card[2];
+    var keywordComment = card[2];
+    if (keywordComment.startsWith('*')) {
+        keywordComment = '';
+    }
+
     const fileName1 = `${outputMP3FileBase}-${index}-1.mp3`;
-    const ssml1 = ssmlWrap(keyword, 3);
+    const ssml1 = ssmlWrap(keyword, 1);
     await synthesizeSsml(ssml1, fileName1, DEFAULT_VOICE1, DEFAULT_SPEAKING_RATE);
     mp3List.push(fileName1);
 
     const fileName2 = `${outputMP3FileBase}-${index}-2.mp3`;
-    const ssml2 = ssmlWrap(keywordTransl, 2);
+    const ssml2 = ssmlWrap(keywordComment, 3);
     await synthesizeSsml(ssml2, fileName2, DEFAULT_VOICE2, DEFAULT_SPEAKING_RATE);
     mp3List.push(fileName2);
+
+    const fileName3 = `${outputMP3FileBase}-${index}-3.mp3`;
+    const ssml3 = ssmlWrap(keywordTransl, 3);
+    await synthesizeSsml(ssml3, fileName3, DEFAULT_VOICE3, DEFAULT_SPEAKING_RATE);
+    mp3List.push(fileName3);
 }
 
 async function writeToMP3File(cards, outputMP3FileBase) {
-    const cardsS = cards.slice(0, 3);
+    const cardsS = cards.slice(0, 20);
 
     var index = 0;
     const mp3Files = [];
