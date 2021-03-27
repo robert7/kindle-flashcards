@@ -19,6 +19,10 @@ const optionator = require('optionator');
 
 const CSV_DELIMITER = ';';
 
+// \b doesn't work well for non english texts
+const WORD_REGEX = /(\s|[?"„“‚‘(),.;:#+*$/_=-])/;
+
+
 const CSV_PARSE_OPTIONS = {
     columns: false,
     skip_empty_lines: true,
@@ -64,6 +68,12 @@ async function readCardDataFromFile(fileName, cards) {
     return new Promise((resolve, reject) => {
 
         let lineNr = 0;
+
+        if (!fs.existsSync(fileName)) {
+            console.log(`Inout card file ${fileName} seem not to exist, assuming we start from scratch.`);
+            resolve(cards);
+            return;
+        }
 
         let stream = fs.createReadStream(fileName)
             // split on new line - regex variant: .pipe(es.split(/(\r?\n)/))
@@ -251,7 +261,7 @@ const parseCommandLine = function(argv) {
                 option: 'translate',
                 type: 'Boolean',
                 description: 'Try to translate lines in flashcards-file where translation is missing.',
-                default: 'true'
+                default: 'false'
             }, {
                 option: 'dedup',
                 type: 'filename|directory',
@@ -367,8 +377,6 @@ async function importFile(cards, importFileName, dedupSet) {
         let addedCards = 0;
 
         // https://github.com/dominictarr/event-stream#split-matcher
-        //const WORD_REGEX = //;
-        const WORD_REGEX = /(\b|\s|[",.;:#+*$/_=-])/;
 
         let stream = fs.createReadStream(importFileName)
             .pipe(es.split(WORD_REGEX))
@@ -376,7 +384,7 @@ async function importFile(cards, importFileName, dedupSet) {
                 es.mapSync(function(term) {
                     stream.pause();                                 // pause the readstream
                     wordNo += 1;
-                    term = term.trim();
+                    term = term.trim().toLowerCase();
 
                     if (!isDuplicateCardTerm(term, dedupSet) && (!isIgnoredTerm(term))) {
                         console.log(`  adding term "${term}"`);
