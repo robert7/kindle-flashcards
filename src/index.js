@@ -4,12 +4,12 @@ const
     // https://www.npmjs.com/package/csv-parse
     csvParse = require('csv-parse/lib/sync'),
     csvStringify = require('csv-stringify'),
-    translateText = require('@vitalets/google-translate-api'),
     Promise = require('bluebird'),
     // https://www.npmjs.com/package/epub-gen
     EPub = require('epub-gen'),
     moment = require('moment'),
     {synthesizeSsml} = require('./gcpTextToSpeech'),
+    {translate} = require('./gcpTranslate'),
     {concatMp3Files} = require('./mp3Util');
 
 const PROG_NAME = 'kf';
@@ -118,46 +118,54 @@ async function readCardDataFromFile(fileName, cards) {
 
 const DEFAULT_LANGUAGES = {from: 'en', to: 'de'};
 
-async function addTranslations(cards, languages) {
+async function addTranslations(cards, options) {
     // see http://bluebirdjs.com/docs/api/promise.mapseries.html
     // or http://bluebirdjs.com/docs/api/promise.each.html
 
-    if (!languages.from) {
-        languages.from = DEFAULT_LANGUAGES.from;
+    if (!options.from) {
+        options.from = DEFAULT_LANGUAGES.from;
     }
-    if (!languages.to) {
-        languages.to = DEFAULT_LANGUAGES.to;
+    if (!options.to) {
+        options.to = DEFAULT_LANGUAGES.to;
     }
+    const max = options.max;
 
-    console.log('Starting translation (from ${languages.from} to ${languages.to})..');
+    console.log(`Starting translation (from ${options.from} to ${options.to})..`);
+
     let cntTranslations = 0;
-    return Promise.each(cards, (card) => {
-        const validCard = Array.isArray(card)
-            && (card.length >= CARD_COL_COUNT)
-            && (typeof card[COL_KEY] === 'string');
+    try {
+        for (const card of cards) {
 
-        if (!validCard) {
-            return card;
-        }
+            const validCard = Array.isArray(card)
+                && (card.length >= CARD_COL_COUNT)
+                && (typeof card[COL_KEY] === 'string');
 
-        const keyword = card[COL_KEY];
-        const translation = card[COL_VALUE];
-        const toBeTranslated = (!translation) || translation.length === 0;
-        if (!toBeTranslated) {
-            return card;
-        }
+            if (!validCard) {
+                continue;
+            }
 
-        // TODO pass languages as parameters
-        return translateText(keyword, {from: languages.from, to: languages.to}).then((result) => {
-            const translatedKeyword = result.text;
-            console.log(`  translated ${keyword} to ${translatedKeyword}`);
+            const keyword = card[COL_KEY];
+            const translation = card[COL_VALUE];
+            const toBeTranslated = (!translation) || translation.length === 0;
+            if (!toBeTranslated) {
+                continue;
+            }
+
+            const translatedKeyword = await translate(keyword,{from: options.from, to: options.to});
+            console.log(`  translated \"${keyword}\" to \"${translatedKeyword}\"`);
             card[COL_VALUE] = translatedKeyword;
             cntTranslations++;
-        });
-    }).then(() => {
-        console.log(`${cntTranslations} translations added..`);
-        return cards;
-    });
+
+            if (max && (cntTranslations >= max)) {
+                console.log(`Maximum ${max} translations reached..`);
+                break;
+            }
+        }
+    } catch (e) {
+        console.log(`Translation fail: ${e}`);
+    }
+
+    console.log(`${cntTranslations} translations added..`);
 }
 
 async function writeToCSVFile(cards, fileName) {
@@ -254,7 +262,7 @@ const parseCommandLine = function(argv) {
                 + '  Result is written to EPUB file.\n'
                 + '\n'
                 + 'Version 1.0',
-            typeAliases: {filename: 'String', directory: 'String', language: 'String'},
+            typeAliases: {filename: 'String', directory: 'String', language: 'String', count: 'Number'},
             options: [{
                 option: 'help',
                 alias: 'h',
@@ -283,19 +291,16 @@ const parseCommandLine = function(argv) {
                 // prefixed with no (eg. --no-problemo)
                 option: 'shuffle',
                 type: 'Boolean',
-                description: 'Turns shuffling off.\n'
-                    + 'Default behaviour: reorder file (1: card with notes, 2: card without notes, 3: cards where'
+                description: 'Shuffle cards.\n'
+                    + 'Default behaviour: reorder content (1: cards with notes, 2: cards without notes, 3: cards where'
                     + ' note starts with "-".\n'
                     + 'Inside of the groups the order is random.\n'
-                    + '(Therefore mark cards which you want go first with note, cards which should go last with "-").',
-                default: 'true'
+                    + 'Therefore mark cards which you want go first with note, cards which should go last with "-",\n'
+                    + 'special note "*" will be interpreted as blank.'
             }, {
                 option: 'trivials',
                 type: 'Boolean',
-                description: 'Turns off filtering of "trivials".\n'
-                    + 'Default behaviour: Lines with identical key & value (question and answer) are filtered out. '
-                    + 'Default: true - see previous param for disabling.',
-                default: 'true'
+                description: 'Filter out "trivials". Default behaviour: lines with identical key & value (question and answer) are filtered out. '
             }, {
                 option: 'epub',
                 type: 'Boolean',
@@ -313,6 +318,10 @@ const parseCommandLine = function(argv) {
                 option: 'langTo',
                 type: 'language',
                 description: 'Translate to language.'
+            }, {
+                option: 'translMax',
+                type: 'count',
+                description: 'Max. cards to translate.'
             }
             ]
         })
@@ -485,13 +494,13 @@ function generateOutputFileName(mainFlashCardFile, newFileEnding) {
     return mainFlashCardFile.replace(/\.csv/, newFileEnding);
 }
 
-const DEFAULT_VOICE1 = {
+const DEFAULT_VOICE2 = {
     name: 'en-US-Wavenet-C',
     ssmlGender: 'FEMALE',
     languageCode: 'en-US'
 };
 
-const DEFAULT_VOICE2 = {
+const DEFAULT_VOICE1 = {
     name: 'sk-SK-Standard-A',
     ssmlGender: 'FEMALE',
     languageCode: 'sk-SK'
@@ -520,27 +529,28 @@ async function writeToMP3FileOne(mp3List, card, index, outputMP3FileBase) {
     }
 
     const fileName1 = `${outputMP3FileBase}-${index}-1.mp3`;
-    const ssml1 = ssmlWrap(keyword, 1);
+    const ssml1 = ssmlWrap(keyword, 3);
     await synthesizeSsml(ssml1, fileName1, DEFAULT_VOICE1, DEFAULT_SPEAKING_RATE);
     mp3List.push(fileName1);
 
-    const fileName2 = `${outputMP3FileBase}-${index}-2.mp3`;
-    const ssml2 = ssmlWrap(keywordComment, 3);
-    await synthesizeSsml(ssml2, fileName2, DEFAULT_VOICE2, DEFAULT_SPEAKING_RATE);
-    mp3List.push(fileName2);
+    // const fileName2 = `${outputMP3FileBase}-${index}-2.mp3`;
+    // const ssml2 = ssmlWrap(keywordComment, 3);
+    // await synthesizeSsml(ssml2, fileName2, DEFAULT_VOICE2, DEFAULT_SPEAKING_RATE);
+    // mp3List.push(fileName2);
 
     const fileName3 = `${outputMP3FileBase}-${index}-3.mp3`;
-    const ssml3 = ssmlWrap(keywordTransl, 3);
+    const ssml3 = ssmlWrap(keywordTransl, 2);
     await synthesizeSsml(ssml3, fileName3, DEFAULT_VOICE3, DEFAULT_SPEAKING_RATE);
     mp3List.push(fileName3);
 }
 
 async function writeToMP3File(cards, outputMP3FileBase) {
+    // TEMP experimental limit
     const cardsS = cards.slice(0, 20);
 
-    var index = 0;
     const mp3Files = [];
 
+    var index = 0;
     for (const card of cardsS) {
         await writeToMP3FileOne(mp3Files, card, index, outputMP3FileBase);
         index++;
@@ -565,7 +575,8 @@ async function main(argv) {
         audio: paramAudio,
         epub: paramEpub,
         langFrom: paramLangFrom,
-        langTo: paramLangTo
+        langTo: paramLangTo,
+        translMax: paramTranslMax
     } = options;
     if (displayHelpAndQuit) {
         process.exit(1);
@@ -587,7 +598,8 @@ async function main(argv) {
     if (paramTranslate) {
         await addTranslations(cards, {
                 from: paramLangFrom,
-                to: paramLangTo
+                to: paramLangTo,
+                max: paramTranslMax
             }
         );
     }
