@@ -22,7 +22,6 @@ const CSV_DELIMITER = ';';
 // \b doesn't work well for non english texts
 const WORD_REGEX = /(\s|[?"„“‚‘(),.;:#+*$/_=-])/;
 
-
 const CSV_PARSE_OPTIONS = {
     columns: false,
     skip_empty_lines: true,
@@ -117,11 +116,20 @@ async function readCardDataFromFile(fileName, cards) {
     });
 }
 
-async function addTranslations(cards) {
+const DEFAULT_LANGUAGES = {from: 'en', to: 'de'};
+
+async function addTranslations(cards, languages) {
     // see http://bluebirdjs.com/docs/api/promise.mapseries.html
     // or http://bluebirdjs.com/docs/api/promise.each.html
 
-    console.log('Starting translation..');
+    if (!languages.from) {
+        languages.from = DEFAULT_LANGUAGES.from;
+    }
+    if (!languages.to) {
+        languages.to = DEFAULT_LANGUAGES.to;
+    }
+
+    console.log('Starting translation (from ${languages.from} to ${languages.to})..');
     let cntTranslations = 0;
     return Promise.each(cards, (card) => {
         const validCard = Array.isArray(card)
@@ -140,7 +148,7 @@ async function addTranslations(cards) {
         }
 
         // TODO pass languages as parameters
-        return translateText(keyword, {from: 'en', to: 'de'}).then((result) => {
+        return translateText(keyword, {from: languages.from, to: languages.to}).then((result) => {
             const translatedKeyword = result.text;
             console.log(`  translated ${keyword} to ${translatedKeyword}`);
             card[COL_VALUE] = translatedKeyword;
@@ -246,7 +254,7 @@ const parseCommandLine = function(argv) {
                 + '  Result is written to EPUB file.\n'
                 + '\n'
                 + 'Version 1.0',
-            typeAliases: {filename: 'String', directory: 'String'},
+            typeAliases: {filename: 'String', directory: 'String', language: 'String'},
             options: [{
                 option: 'help',
                 alias: 'h',
@@ -260,7 +268,7 @@ const parseCommandLine = function(argv) {
             }, {
                 option: 'translate',
                 type: 'Boolean',
-                description: 'Try to translate lines in flashcards-file where translation is missing.',
+                description: 'Translate lines in flashcards-file where translation is missing.',
                 default: 'false'
             }, {
                 option: 'dedup',
@@ -297,6 +305,14 @@ const parseCommandLine = function(argv) {
                 option: 'audio',
                 type: 'Boolean',
                 description: 'Generate mp3 audio version. Experimental.'
+            }, {
+                option: 'langFrom',
+                type: 'language',
+                description: 'Translate from language.'
+            }, {
+                option: 'langTo',
+                type: 'language',
+                description: 'Translate to language.'
             }
             ]
         })
@@ -547,7 +563,9 @@ async function main(argv) {
         shuffle: paramShuffle,
         trivials: paramTrivials,
         audio: paramAudio,
-        epub: paramEpub
+        epub: paramEpub,
+        langFrom: paramLangFrom,
+        langTo: paramLangTo
     } = options;
     if (displayHelpAndQuit) {
         process.exit(1);
@@ -567,7 +585,11 @@ async function main(argv) {
     await importFile(cards, paramImportFileName, dedupSet);
 
     if (paramTranslate) {
-        await addTranslations(cards);
+        await addTranslations(cards, {
+                from: paramLangFrom,
+                to: paramLangTo
+            }
+        );
     }
 
     if (paramTrivials) {
