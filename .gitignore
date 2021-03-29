@@ -5,6 +5,7 @@
 node_modules
 *.log
 tmp
+c
 
 .tmp/**
 config/config.json

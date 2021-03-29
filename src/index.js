@@ -1,5 +1,6 @@
 const
     fs = require('fs'),
+    fspromises = require('fs').promises,
     es = require('event-stream'),
     // https://www.npmjs.com/package/csv-parse
     csvParse = require('csv-parse/lib/sync'),
@@ -10,7 +11,8 @@ const
     moment = require('moment'),
     {synthesizeSsml} = require('./gcpTextToSpeech'),
     {translate} = require('./gcpTranslate'),
-    {concatMp3Files} = require('./mp3Util');
+    {concatMp3Files} = require('./mp3Util'),
+    crypto = require('crypto');
 
 const PROG_NAME = 'kf';
 
@@ -151,7 +153,7 @@ async function addTranslations(cards, options) {
                 continue;
             }
 
-            const translatedKeyword = await translate(keyword,{from: options.from, to: options.to});
+            const translatedKeyword = await translate(keyword, {from: options.from, to: options.to});
             console.log(`  translated \"${keyword}\" to \"${translatedKeyword}\"`);
             card[COL_VALUE] = translatedKeyword;
             cntTranslations++;
@@ -500,13 +502,13 @@ const DEFAULT_VOICE2 = {
     languageCode: 'en-US'
 };
 
-const DEFAULT_VOICE1 = {
+const DEFAULT_VOICE_KEYWORD = {
     name: 'sk-SK-Standard-A',
     ssmlGender: 'FEMALE',
     languageCode: 'sk-SK'
 };
 
-const DEFAULT_VOICE3 = {
+const DEFAULT_VOICE_TRANSL = {
     name: 'de-DE-Standard-A',
     ssmlGender: 'FEMALE',
     languageCode: 'de-DE'
@@ -520,33 +522,58 @@ function ssmlWrap(text, breakTime) {
     return `<speak>${sentence}<break time="${breakTime}s"/></speak>`;
 }
 
+const CACHE_DIR = './c';
+
+/**
+ * Get hash string based on card data.
+ * This should be unique identification of a card.
+ *
+ * @param card
+ * @return {string}
+ */
+function getCardHash(card) {
+    const keyword = card[0];
+    const keywordTransl = card[1];
+
+    const hash = crypto.createHash('md5')
+        .update(keyword)
+        .update(keywordTransl)
+        .digest('hex');
+    return hash;
+}
+
 async function writeToMP3FileOne(mp3List, card, index, outputMP3FileBase) {
     const keyword = card[0];
     const keywordTransl = card[1];
-    var keywordComment = card[2];
-    if (keywordComment.startsWith('*')) {
-        keywordComment = '';
+
+    const cardHash = getCardHash(card);
+
+    const fileName1 = `${CACHE_DIR}/${cardHash}-1.mp3`;
+    const fileName2 = `${CACHE_DIR}/${cardHash}-2.mp3`;
+
+    if (!fs.existsSync(fileName1)) {
+        const ssml1 = ssmlWrap(keyword, 3);
+        await synthesizeSsml(ssml1, fileName1, DEFAULT_VOICE_KEYWORD, DEFAULT_SPEAKING_RATE);
+
+        const ssml3 = ssmlWrap(keywordTransl, 2);
+        await synthesizeSsml(ssml3, fileName2, DEFAULT_VOICE_TRANSL, DEFAULT_SPEAKING_RATE);
     }
 
-    const fileName1 = `${outputMP3FileBase}-${index}-1.mp3`;
-    const ssml1 = ssmlWrap(keyword, 3);
-    await synthesizeSsml(ssml1, fileName1, DEFAULT_VOICE1, DEFAULT_SPEAKING_RATE);
     mp3List.push(fileName1);
+    mp3List.push(fileName2);
+}
 
-    // const fileName2 = `${outputMP3FileBase}-${index}-2.mp3`;
-    // const ssml2 = ssmlWrap(keywordComment, 3);
-    // await synthesizeSsml(ssml2, fileName2, DEFAULT_VOICE2, DEFAULT_SPEAKING_RATE);
-    // mp3List.push(fileName2);
-
-    const fileName3 = `${outputMP3FileBase}-${index}-3.mp3`;
-    const ssml3 = ssmlWrap(keywordTransl, 2);
-    await synthesizeSsml(ssml3, fileName3, DEFAULT_VOICE3, DEFAULT_SPEAKING_RATE);
-    mp3List.push(fileName3);
+async function checkOrCreateCacheDir() {
+    if (!fs.existsSync(CACHE_DIR)) {
+        await fspromises.mkdir(CACHE_DIR);
+    }
 }
 
 async function writeToMP3File(cards, outputMP3FileBase) {
+    await checkOrCreateCacheDir();
+
     // TEMP experimental limit
-    const cardsS = cards.slice(0, 20);
+    const cardsS = cards.slice(0, 5);
 
     const mp3Files = [];
 
@@ -560,6 +587,8 @@ async function writeToMP3File(cards, outputMP3FileBase) {
     const concatOK = await concatMp3Files(mp3Files, resultMp3);
     if (!concatOK) {
         console.log('concat failed');
+    } else {
+        console.log(`Audio ${resultMp3} created`);
     }
 }
 

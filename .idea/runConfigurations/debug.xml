@@ -1,8 +1,0 @@
-<component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="debug" type="NodeJSConfigurationType" application-parameters="--translate --langFrom sk --langTo de  --translMax 25 tmp/CLEAN-sk-de.csv" path-to-js-file="src/index.js" working-dir="$PROJECT_DIR$">
-    <envs>
-      <env name="GOOGLE_APPLICATION_CREDENTIALS" value="$USER_HOME$/rss-learning-9e35fa1cd2de.json" />
-    </envs>
-    <method v="2" />
-  </configuration>
-</component>
