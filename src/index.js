@@ -200,9 +200,9 @@ const writeToPDFFile = (cards, fileName) => {
 
     doc.fontSize(25);
     cards.forEach((card) => {
-        doc.text(card[0]);
+        doc.text(card[COL_KEY]);
         doc.addPage();
-        doc.text(card[1]);
+        doc.text(card[COL_VALUE]);
         doc.addPage();
     });
     doc.end();
@@ -217,9 +217,9 @@ async function writeToEPUBFile(cards, fileName) {
     console.log('Starting EPUB conversion..');
     const content = [];
     cards.forEach((card) => {
-        const keyword = card[0];
-        const keywordTransl = card[1];
-        const keywordComment = card[2];
+        const keyword = card[COL_KEY];
+        const keywordTransl = card[COL_VALUE];
+        const keywordComment = card[COL_COMMENT];
         content.push({
             title: keyword,
             data: `<p>${keywordComment}</p>`
@@ -404,7 +404,7 @@ const addCardToDedupSet = (card, dedupSet, options) => {
     if (!card) {
         return;
     }
-    addTermToDedupSet(card[0], dedupSet, options);
+    addTermToDedupSet(card[COL_KEY], dedupSet, options);
 };
 
 async function addCardsToDedupSet(cards, dedupSet, options) {
@@ -464,8 +464,8 @@ async function importFile(cards, importFileName, dedupSet, options) {
 
 async function filterOutTrivials(cards) {
     return cards.filter((card) => {
-        const keyword = normalizeTerm(card[0]);
-        const keywordTr = normalizeTerm(card[1]);
+        const keyword = normalizeTerm(card[COL_KEY]);
+        const keywordTr = normalizeTerm(card[COL_VALUE]);
         const isTrivial = (!keyword) || (keyword === keywordTr);
         if (isTrivial) {
             console.log(`Filtering out trivial ${keyword} to ${keywordTr}`);
@@ -557,8 +557,8 @@ const CACHE_DIR = './c';
  * @return {string}
  */
 function getCardHash(card) {
-    const keyword = card[0];
-    const keywordTransl = card[1];
+    const keyword = card[COL_KEY];
+    const keywordTransl = card[COL_VALUE];
 
     const hash = crypto.createHash('md5')
         .update(keyword)
@@ -568,8 +568,8 @@ function getCardHash(card) {
 }
 
 async function writeToMP3FileOne(mp3List, card, index, outputMP3FileBase) {
-    const keyword = card[0];
-    const keywordTransl = card[1];
+    const keyword = card[COL_KEY];
+    const keywordTransl = card[COL_VALUE];
 
     const cardHash = getCardHash(card);
 
