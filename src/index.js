@@ -9,10 +9,12 @@ const
     // https://www.npmjs.com/package/epub-gen
     EPub = require('epub-gen'),
     moment = require('moment'),
+    crypto = require('crypto'),
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     {synthesizeSsml} = require('./gcpTextToSpeech'),
     {translate} = require('./gcpTranslate'),
     {concatMp3Files} = require('./mp3Util'),
-    crypto = require('crypto');
+    {SlovakStemmer} = require('./SlovakStemmer');
 
 const PROG_NAME = 'kf';
 
@@ -281,12 +283,6 @@ const parseCommandLine = function(argv) {
                 description: 'Translate lines in flashcards-file where translation is missing.',
                 default: 'false'
             }, {
-                option: 'dedup',
-                type: 'filename|directory',
-                description: '[NOT implemented yet]..\n'
-                    + 'Deduplicate against existing flashcard file(s) (in case directory was passed\n'
-                    + 'then it is scanned for files and all files in it are used as deduplication source.'
-            }, {
                 // handling of Boolean in optionator: https://www.npmjs.com/package/optionator
                 // .. boolean flags (eg. --problemo, -p) which take no value and result in a true
                 // if they are present, the falsey undefined if they are not present, or false if present and explicitly
@@ -321,10 +317,25 @@ const parseCommandLine = function(argv) {
                 type: 'language',
                 description: 'Translate to language.'
             }, {
+                option: 'stem',
+                type: 'Boolean',
+                description: 'While importing text (--import) use stemming in deduplication of cards.'
+                    + ' Currently only works for "sk" language.'
+            }, {
                 option: 'translMax',
                 type: 'count',
                 description: 'Max. cards to translate.'
             }
+
+
+                // {
+                //     option: 'dedup',
+                //     type: 'filename|directory',
+                //     description: '[NOT implemented yet]..\n'
+                //         + 'Deduplicate against existing flashcard file(s) (in case directory was passed\n'
+                //         + 'then it is scanned for files and all files in it are used as deduplication source.'
+                // },
+
             ]
         })
     ;
@@ -345,15 +356,29 @@ const parseCommandLine = function(argv) {
     return options;
 };
 
-const normalizeTerm = (term) => {
+const slovakStemmer = new SlovakStemmer();
+
+const normalizeTerm = (term, options) => {
+    const origTerm = term;
     if (typeof term !== 'string') {
         return term;
     }
-    return term.toLowerCase().replace(/\s*/, ' ').trim();
+
+    term = term.toLowerCase().replace(/\s*/, ' ').trim();
+
+    if (options && options.stem) {
+        const terms = term.split(WORD_REGEX);
+        if (terms.length > 1) {
+            term = terms[0];
+        }
+        term = slovakStemmer.stem(term);
+    }
+    // console.log(`Normalized term "${origTerm}" => "${term}"`);
+    return term;
 };
 
-const addTermToDedupSet = (term, dedupSet) => {
-    term = normalizeTerm(term);
+const addTermToDedupSet = (term, dedupSet, options) => {
+    term = normalizeTerm(term, options);
     if (!term) {
         return;
     }
@@ -361,8 +386,8 @@ const addTermToDedupSet = (term, dedupSet) => {
     dedupSet.add(term);
 };
 
-const isDuplicateCardTerm = (term, dedupSet) => {
-    term = normalizeTerm(term);
+const isDuplicateCardTerm = (term, dedupSet, options) => {
+    term = normalizeTerm(term, options);
     if (!term) {
         return true;
     }
@@ -375,21 +400,21 @@ const isIgnoredTerm = (term) => {
     return (term.length < 3) || REGEX_IS_NUM.test(term);
 };
 
-const addCardToDedupSet = (card, dedupSet) => {
+const addCardToDedupSet = (card, dedupSet, options) => {
     if (!card) {
         return;
     }
-    addTermToDedupSet(card[0], dedupSet);
+    addTermToDedupSet(card[0], dedupSet, options);
 };
 
-async function addCardsToDedupSet(cards, dedupSet) {
+async function addCardsToDedupSet(cards, dedupSet, options) {
     cards.forEach((card) => {
-        addCardToDedupSet(card, dedupSet);
+        addCardToDedupSet(card, dedupSet, options);
     });
     return Promise.resolve();
 }
 
-async function importFile(cards, importFileName, dedupSet) {
+async function importFile(cards, importFileName, dedupSet, options) {
     if (!importFileName || (!fs.existsSync(importFileName))) {
         if (importFileName) {
             console.log(`File ${importFileName} requested to be imported, but it seems not to exist.. Ignoring..`);
@@ -413,10 +438,10 @@ async function importFile(cards, importFileName, dedupSet) {
                     wordNo += 1;
                     term = term.trim().toLowerCase();
 
-                    if (!isDuplicateCardTerm(term, dedupSet) && (!isIgnoredTerm(term))) {
-                        console.log(`  adding term "${term}"`);
+                    if (!isDuplicateCardTerm(term, dedupSet, options) && (!isIgnoredTerm(term))) {
+                        console.log(`  Adding new card term "${term}"`);
                         const card = addCard([term], cards);
-                        addCardToDedupSet(card, dedupSet);
+                        addCardToDedupSet(card, dedupSet, options);
                         addedCards++;
                     } else {
                         if (term.length > 0) {
@@ -548,9 +573,12 @@ async function writeToMP3FileOne(mp3List, card, index, outputMP3FileBase) {
 
     const cardHash = getCardHash(card);
 
+    // note we could add the language to the filename, but if has not real sense to use various languages
+    // so the language is given by the card content
     const fileName1 = `${CACHE_DIR}/${cardHash}-1.mp3`;
     const fileName2 = `${CACHE_DIR}/${cardHash}-2.mp3`;
 
+    // the audio files corresponding to current card, will be recreated (only) if content of the card changed
     if (!fs.existsSync(fileName1)) {
         const ssml1 = ssmlWrap(keyword, 3);
         await synthesizeSsml(ssml1, fileName1, DEFAULT_VOICE_KEYWORD, DEFAULT_SPEAKING_RATE);
@@ -573,7 +601,7 @@ async function writeToMP3File(cards, outputMP3FileBase) {
     await checkOrCreateCacheDir();
 
     // TEMP experimental limit
-    const cardsS = cards.slice(0, 5);
+    const cardsS = cards.slice(0, 10);
 
     const mp3Files = [];
 
@@ -586,9 +614,9 @@ async function writeToMP3File(cards, outputMP3FileBase) {
 
     const concatOK = await concatMp3Files(mp3Files, resultMp3);
     if (!concatOK) {
-        console.log('concat failed');
+        console.log('Audio concat failed!');
     } else {
-        console.log(`Audio ${resultMp3} created`);
+        console.log(`Audio ${resultMp3} created.`);
     }
 }
 
@@ -621,8 +649,8 @@ async function main(argv) {
     console.log(`CSV output: ${mainCardsOutputFile}`);
 
     await readCardDataFromFile(mainFlashCardFile, cards);
-    await addCardsToDedupSet(cards, dedupSet);
-    await importFile(cards, paramImportFileName, dedupSet);
+    await addCardsToDedupSet(cards, dedupSet, options);
+    await importFile(cards, paramImportFileName, dedupSet, options);
 
     if (paramTranslate) {
         await addTranslations(cards, {
