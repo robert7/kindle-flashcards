@@ -22,6 +22,8 @@ Basic idea:
   service or [Calibre](https://manual.calibre-ebook.com/generated/en/ebook-convert.html).
 * Optional: write output to audio format (MP3)
 
+![Tests](https://github.com/robert7/kindle-flashcards/actions/workflows/node.js.yml/badge.svg)
+
 # Example
 Display help to see all options:
 
