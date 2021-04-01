@@ -29,5 +29,9 @@
     "moment": "2.24.0",
     "optionator": "0.8.3",
     "pdfkit": "0.11.0"
+  },
+  "devDependencies": {
+    "chai": "^4.3.4",
+    "sinon": "^10.0.0"
   }
 }

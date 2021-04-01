@@ -3,6 +3,10 @@
 
 const {SlovakStemmer, endsWith, startsWith, deleteN, replaceChar} = require('../src/SlovakStemmer');
 
+// chai & sinon: https://scotch.io/tutorials/how-to-test-nodejs-apps-using-mocha-chai-and-sinonjs
+const chai = require('chai');
+const expect = chai.expect;
+
 var assert = require('assert');
 describe('SlovakStemmer', function() {
     describe('startsWith', function() {
@@ -72,9 +76,9 @@ describe('SlovakStemmer', function() {
         it('should correctly stem', function() {
             let slovakStemmer = new SlovakStemmer();
 
-            assert(slovakStemmer.stem('najžľaznatejšieho') === 'žľaznat');
-            assert(slovakStemmer.stem('zefektívnenie') === 'zefektívnn');
-            assert(slovakStemmer.stem('umožnenie') === 'umožnn');
+            expect(slovakStemmer.stem('najžľaznatejšieho')).to.be.equal('žľaznat');
+            expect(slovakStemmer.stem('zefektívnenie')).to.be.equal('zefektívnn');
+            expect(slovakStemmer.stem('umožnenie')).to.be.equal('umožnn');
         });
     });
 
