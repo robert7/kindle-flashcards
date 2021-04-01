@@ -2,7 +2,7 @@ const
     audioconcat = require('audioconcat'),
     fs = require('fs');
 
-const CONCAT_CHUNK_SIZE = 3;
+const CONCAT_CHUNK_SIZE = 35;
 
 async function concatMp3FilesInt(mp3Files, concatedMp3Filename) {
     return new Promise((resolve, reject) => {
