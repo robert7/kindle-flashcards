@@ -7,7 +7,7 @@ ebook reader or audio player may be good option.
 
 Of course only the "happy path" which suit my special use cases is implemented... but the existing core can be easily extended.
 
-Basic idea:
+## Basic idea
 * Take basic CSV file (columns: key, value, note) and generate an ebook where "key, note" are one page
   and "value" is on next page.
   As you can fill the CSV with any content, this can be used to learn anything you desire.
@@ -24,7 +24,7 @@ Basic idea:
 
 ![Tests](https://github.com/robert7/kindle-flashcards/actions/workflows/node.js.yml/badge.svg)
 
-# Example
+## Example
 Display help to see all options:
 
 ``./kf``
@@ -36,3 +36,11 @@ Process given CSV file and generate ebook:
 Narrate given CSV file into audio version:
 
 ``./kf 01.csv --audio``
+
+## Preconditions:
+* It works only with Google Cloud account with activated billing..
+* Authenticate against Google cloud:
+  * [Create a service account](https://cloud.google.com/iam/docs/understanding-service-accounts)
+  * [Pass credentials](https://cloud.google.com/docs/authentication/production) in the GOOGLE_APPLICATION_CREDENTIALS environment variable.
+* In order mp3 merging to work, [ffmpeg must be on the path](https://www.npmjs.com/package/fluent-ffmpeg).   
+
