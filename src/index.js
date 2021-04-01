@@ -110,10 +110,10 @@ async function readCardDataFromFile(fileName, cards) {
                     // resume the readstream, possibly from a callback
                     stream.resume();
                 }).on('error', function(err) {
-                    console.log(`Error while reading file ${fileName} (at line ${lineNr})`, err);
+                    console.log(`Error while reading file ${fileName} (at line ${lineNr}).`, err);
                     reject();
                 }).on('end', function() {
-                    console.log(`Read entire file ${fileName} (${lineNr} lines)`);
+                    console.log(`Read entire file ${fileName} (${lineNr} lines).`);
                     resolve(cards);
                 })
             );
@@ -325,17 +325,11 @@ const parseCommandLine = function(argv) {
                 option: 'translMax',
                 type: 'count',
                 description: 'Max. cards to translate.'
+            }, {
+                option: 'dedup',
+                type: 'filename',
+                description: 'Deduplicate against existing flashcard file.'
             }
-
-
-                // {
-                //     option: 'dedup',
-                //     type: 'filename|directory',
-                //     description: '[NOT implemented yet]..\n'
-                //         + 'Deduplicate against existing flashcard file(s) (in case directory was passed\n'
-                //         + 'then it is scanned for files and all files in it are used as deduplication source.'
-                // },
-
             ]
         })
     ;
@@ -633,7 +627,8 @@ async function main(argv) {
         epub: paramEpub,
         langFrom: paramLangFrom,
         langTo: paramLangTo,
-        translMax: paramTranslMax
+        translMax: paramTranslMax,
+        dedup: paramDedup
     } = options;
     if (displayHelpAndQuit) {
         process.exit(1);
@@ -650,6 +645,13 @@ async function main(argv) {
 
     await readCardDataFromFile(mainFlashCardFile, cards);
     await addCardsToDedupSet(cards, dedupSet, options);
+
+    if (paramDedup) {
+        const cardsDedup = [];
+        await readCardDataFromFile(paramDedup, cardsDedup);
+        await addCardsToDedupSet(cardsDedup, dedupSet, options);
+    }
+
     await importFile(cards, paramImportFileName, dedupSet, options);
 
     if (paramTranslate) {
