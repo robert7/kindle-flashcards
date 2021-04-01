@@ -23,8 +23,6 @@ const optionator = require('optionator');
 
 const CSV_DELIMITER = ';';
 
-// \b doesn't work well for non english texts
-const WORD_REGEX = /(\s|[?"„“‚‘(),.;:#+*$/_=-])/;
 
 const CSV_PARSE_OPTIONS = {
     columns: false,
@@ -40,6 +38,12 @@ const COL_KEY = 0;
 const COL_VALUE = 1;
 const COL_COMMENT = 2;
 const CARD_COL_COUNT = COL_COMMENT + 1;
+
+const REGEX_IS_NUM = /^\d/;
+
+// \b doesn't work well for non english texts
+const REGEX_WORD = /(\s|[?"„“‚‘(),.;:#+*$/_=-])/;
+
 
 /**
  * Add list of words (string array to cards).
@@ -132,7 +136,7 @@ async function addTranslations(cards, options) {
     if (!options.to) {
         options.to = DEFAULT_LANGUAGES.to;
     }
-    const max = options.max;
+    const limit = options.limit;
 
     console.log(`Starting translation (from ${options.from} to ${options.to})..`);
 
@@ -160,8 +164,8 @@ async function addTranslations(cards, options) {
             card[COL_VALUE] = translatedKeyword;
             cntTranslations++;
 
-            if (max && (cntTranslations >= max)) {
-                console.log(`Maximum ${max} translations reached..`);
+            if (limit && (cntTranslations >= limit)) {
+                console.log(`Maximum ${limit} translations reached (=> end)..`);
                 break;
             }
         }
@@ -322,9 +326,10 @@ const parseCommandLine = function(argv) {
                 description: 'While importing text (--import) use stemming in deduplication of cards.'
                     + ' Currently only works for "sk" language.'
             }, {
-                option: 'translMax',
+                option: 'limit',
                 type: 'count',
-                description: 'Max. cards to translate.'
+                description: 'For translation: max. cards to translate, for audio rendering: max cards to'
+                    + 'render in audio (useful for testing/experiments).'
             }, {
                 option: 'dedup',
                 type: 'filename',
@@ -361,7 +366,7 @@ const normalizeTerm = (term, options) => {
     term = term.toLowerCase().replace(/\s*/, ' ').trim();
 
     if (options && options.stem) {
-        const terms = term.split(WORD_REGEX);
+        const terms = term.split(REGEX_WORD);
         if (terms.length > 1) {
             term = terms[0];
         }
@@ -371,44 +376,43 @@ const normalizeTerm = (term, options) => {
     return term;
 };
 
-const addTermToDedupSet = (term, dedupSet, options) => {
+const addTermToDedupMap = (term, dedupMap, options) => {
     term = normalizeTerm(term, options);
     if (!term) {
         return;
     }
 
-    dedupSet.add(term);
+    dedupMap.set(term, null);
 };
 
-const isDuplicateCardTerm = (term, dedupSet, options) => {
+const isDuplicateCardTerm = (term, dedupMap, options) => {
     term = normalizeTerm(term, options);
     if (!term) {
         return true;
     }
-    return dedupSet.has(term);
+    return dedupMap.has(term);
 };
 
-const REGEX_IS_NUM = /^\d/;
 
 const isIgnoredTerm = (term) => {
     return (term.length < 3) || REGEX_IS_NUM.test(term);
 };
 
-const addCardToDedupSet = (card, dedupSet, options) => {
+const addCardToDedupMap = (card, dedupMap, options) => {
     if (!card) {
         return;
     }
-    addTermToDedupSet(card[COL_KEY], dedupSet, options);
+    addTermToDedupMap(card[COL_KEY], dedupMap, options);
 };
 
-async function addCardsToDedupSet(cards, dedupSet, options) {
+async function addCardsToDedupMap(cards, dedupMap, options) {
     cards.forEach((card) => {
-        addCardToDedupSet(card, dedupSet, options);
+        addCardToDedupMap(card, dedupMap, options);
     });
     return Promise.resolve();
 }
 
-async function importFile(cards, importFileName, dedupSet, options) {
+async function importFile(cards, importFileName, dedupMap, options) {
     if (!importFileName || (!fs.existsSync(importFileName))) {
         if (importFileName) {
             console.log(`File ${importFileName} requested to be imported, but it seems not to exist.. Ignoring..`);
@@ -425,17 +429,17 @@ async function importFile(cards, importFileName, dedupSet, options) {
         // https://github.com/dominictarr/event-stream#split-matcher
 
         let stream = fs.createReadStream(importFileName)
-            .pipe(es.split(WORD_REGEX))
+            .pipe(es.split(REGEX_WORD))
             .pipe(
                 es.mapSync(function(term) {
                     stream.pause();                                 // pause the readstream
                     wordNo += 1;
                     term = term.trim().toLowerCase();
 
-                    if (!isDuplicateCardTerm(term, dedupSet, options) && (!isIgnoredTerm(term))) {
+                    if (!isDuplicateCardTerm(term, dedupMap, options) && (!isIgnoredTerm(term))) {
                         console.log(`  Adding new card term "${term}"`);
                         const card = addCard([term], cards);
-                        addCardToDedupSet(card, dedupSet, options);
+                        addCardToDedupMap(card, dedupMap, options);
                         addedCards++;
                     } else {
                         if (term.length > 0) {
@@ -456,8 +460,8 @@ async function importFile(cards, importFileName, dedupSet, options) {
 
 }
 
-async function filterOutTrivials(cards) {
-    return cards.filter((card) => {
+async function filterOutTrivials(cards, dedupMap, options) {
+    const filteredCards = cards.filter((card) => {
         const keyword = normalizeTerm(card[COL_KEY]);
         const keywordTr = normalizeTerm(card[COL_VALUE]);
         const isTrivial = (!keyword) || (keyword === keywordTr);
@@ -466,6 +470,16 @@ async function filterOutTrivials(cards) {
         }
         return !isTrivial;
     });
+
+    // filteredCards.forEach(card => {
+    //     const keyword = card[COL_KEY];
+    //     const keywordNorm = normalizeTerm(keyword);
+    //     if (isDuplicateCardTerm(keywordNorm, dedupMap, options)) {
+    //         console.log(`${keyword} appears to be duplicate`);
+    //     }
+    // });
+
+    return filteredCards;
 }
 
 /**
@@ -591,18 +605,22 @@ async function checkOrCreateCacheDir() {
     }
 }
 
-async function writeToMP3File(cards, outputMP3FileBase) {
+async function writeToMP3File(cards, outputMP3FileBase, options) {
     await checkOrCreateCacheDir();
 
-    // TEMP experimental limit
-    const cardsS = cards.slice(0, 10);
+    // count of cards to process may be limited by options
+    const limit = options.limit;
+    const cardsToProcess = limit ? cards.slice(0, limit) : cards;
 
     const mp3Files = [];
 
     var index = 0;
-    for (const card of cardsS) {
+    for (const card of cardsToProcess) {
         await writeToMP3FileOne(mp3Files, card, index, outputMP3FileBase);
         index++;
+    }
+    if (limit) {
+        console.log(`Count of cards to process in audio reached (${limit}).`);
     }
     const resultMp3 = `${outputMP3FileBase}.mp3`;
 
@@ -627,7 +645,7 @@ async function main(argv) {
         epub: paramEpub,
         langFrom: paramLangFrom,
         langTo: paramLangTo,
-        translMax: paramTranslMax,
+        limit: paramLimit,
         dedup: paramDedup
     } = options;
     if (displayHelpAndQuit) {
@@ -635,7 +653,7 @@ async function main(argv) {
     }
 
     let cards = [];
-    const dedupSet = new Set();
+    const dedupMap = new Map();
 
     const mainCardsOutputFile = generateOutputFileName(mainFlashCardFile, '-new.csv');
     if (mainCardsOutputFile === mainFlashCardFile) {
@@ -644,27 +662,28 @@ async function main(argv) {
     console.log(`CSV output: ${mainCardsOutputFile}`);
 
     await readCardDataFromFile(mainFlashCardFile, cards);
-    await addCardsToDedupSet(cards, dedupSet, options);
+    await addCardsToDedupMap(cards, dedupMap, options);
 
     if (paramDedup) {
         const cardsDedup = [];
+        // paramDedup is the CSV filename used as "ignore" content
         await readCardDataFromFile(paramDedup, cardsDedup);
-        await addCardsToDedupSet(cardsDedup, dedupSet, options);
+        await addCardsToDedupMap(cardsDedup, dedupMap, options);
     }
 
-    await importFile(cards, paramImportFileName, dedupSet, options);
+    await importFile(cards, paramImportFileName, dedupMap, options);
 
     if (paramTranslate) {
         await addTranslations(cards, {
                 from: paramLangFrom,
                 to: paramLangTo,
-                max: paramTranslMax
+                limit: paramLimit
             }
         );
     }
 
     if (paramTrivials) {
-        cards = await filterOutTrivials(cards);
+        cards = await filterOutTrivials(cards, dedupMap, options);
     }
 
     if (paramShuffle) {
@@ -687,7 +706,7 @@ async function main(argv) {
         console.log('About to generate audio version..');
         const outputMP3FileBase = generateOutputFileName(mainFlashCardFile, '');
         console.log(`MP3 output base: ${outputMP3FileBase}`);
-        await writeToMP3File(cards, outputMP3FileBase);
+        await writeToMP3File(cards, outputMP3FileBase, options);
 
     }
 
