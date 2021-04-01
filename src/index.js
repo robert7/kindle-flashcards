@@ -23,7 +23,6 @@ const optionator = require('optionator');
 
 const CSV_DELIMITER = ';';
 
-
 const CSV_PARSE_OPTIONS = {
     columns: false,
     skip_empty_lines: true,
@@ -43,7 +42,6 @@ const REGEX_IS_NUM = /^\d/;
 
 // \b doesn't work well for non english texts
 const REGEX_WORD = /(\s|[?"„“‚‘(),.;:#+*$/_=-])/;
-
 
 /**
  * Add list of words (string array to cards).
@@ -366,10 +364,12 @@ const normalizeTerm = (term, options) => {
     term = term.toLowerCase().replace(/\s*/, ' ').trim();
 
     if (options && options.stem) {
+        // just the first word
         const terms = term.split(REGEX_WORD);
         if (terms.length > 1) {
             term = terms[0];
         }
+        // and generate stem
         term = slovakStemmer.stem(term);
     }
     // console.log(`Normalized term "${origTerm}" => "${term}"`);
@@ -382,6 +382,8 @@ const addTermToDedupMap = (term, dedupMap, options) => {
         return;
     }
 
+    // the idea of "Map" is to generate temporary unique id of each card
+    // then use id for filtering
     dedupMap.set(term, null);
 };
 
@@ -392,7 +394,6 @@ const isDuplicateCardTerm = (term, dedupMap, options) => {
     }
     return dedupMap.has(term);
 };
-
 
 const isIgnoredTerm = (term) => {
     return (term.length < 3) || REGEX_IS_NUM.test(term);
@@ -425,29 +426,40 @@ async function importFile(cards, importFileName, dedupMap, options) {
 
         let wordNo = 0;
         let addedCards = 0;
+        limit = options.limit;
 
         // https://github.com/dominictarr/event-stream#split-matcher
+        // https://www.npmjs.com/package/event-stream
 
         let stream = fs.createReadStream(importFileName)
             .pipe(es.split(REGEX_WORD))
             .pipe(
                 es.mapSync(function(term) {
-                    stream.pause();                                 // pause the readstream
+                    // pause the readstream
+                    stream.pause();
                     wordNo += 1;
                     term = term.trim().toLowerCase();
 
-                    if (!isDuplicateCardTerm(term, dedupMap, options) && (!isIgnoredTerm(term))) {
-                        console.log(`  Adding new card term "${term}"`);
-                        const card = addCard([term], cards);
-                        addCardToDedupMap(card, dedupMap, options);
-                        addedCards++;
-                    } else {
-                        if (term.length > 0) {
-                            // console.log(`  ignoring skip/duplicate "${term}"`);
+                    // so far could not find a way how to terminate before end
+                    // actually "resume" should terminate stream
+                    // https://stackoverflow.com/questions/19277094/how-to-close-a-readable-stream-before-end
+                    // but probably not when in pipe..
+                    const isLimit = limit && (addedCards >= limit);
+                    if (!isLimit) {
+
+                        if (!isDuplicateCardTerm(term, dedupMap, options) && (!isIgnoredTerm(term))) {
+                            console.log(`  Adding new card term "${term}"`);
+                            const card = addCard([term], cards);
+                            addCardToDedupMap(card, dedupMap, options);
+                            addedCards++;
+                        } else {
+                            if (term.length > 0) {
+                                // console.log(`  ignoring skip/duplicate "${term}"`);
+                            }
                         }
                     }
-
-                    stream.resume();                                // resume the readstream
+                    // resume the readstream
+                    stream.resume();
                 }).on('error', function(err) {
                     console.log(`Error while reading file ${importFileName} (at word ${wordNo})`, err);
                     reject();
@@ -461,6 +473,7 @@ async function importFile(cards, importFileName, dedupMap, options) {
 }
 
 async function filterOutTrivials(cards, dedupMap, options) {
+    console.log(`Filtering out trivials (stemming = ${options.stem})`);
     const filteredCards = cards.filter((card) => {
         const keyword = normalizeTerm(card[COL_KEY]);
         const keywordTr = normalizeTerm(card[COL_VALUE]);
@@ -470,6 +483,11 @@ async function filterOutTrivials(cards, dedupMap, options) {
         }
         return !isTrivial;
     });
+
+
+    // doesn't yet work, as we need a way to exclude the processed term itself
+    // see addTermToDedupMap() we need kind of unique id of a card
+    // may be temporary
 
     // filteredCards.forEach(card => {
     //     const keyword = card[COL_KEY];
@@ -671,7 +689,9 @@ async function main(argv) {
         await addCardsToDedupMap(cardsDedup, dedupMap, options);
     }
 
-    await importFile(cards, paramImportFileName, dedupMap, options);
+    if (paramImportFileName) {
+        await importFile(cards, paramImportFileName, dedupMap, options);
+    }
 
     if (paramTranslate) {
         await addTranslations(cards, {
