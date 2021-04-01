@@ -281,6 +281,7 @@ const parseCommandLine = function(argv) {
                 description: 'Text file to import. If flashcards-file exists, new cards will be appended to it.'
             }, {
                 option: 'translate',
+                alias: 't',
                 type: 'Boolean',
                 description: 'Translate lines in flashcards-file where translation is missing.',
                 default: 'false'
@@ -308,6 +309,7 @@ const parseCommandLine = function(argv) {
                     + 'Commandline will be provided.'
             }, {
                 option: 'audio',
+                alias: 'a',
                 type: 'Boolean',
                 description: 'Generate mp3 audio version. Experimental.'
             }, {
@@ -593,6 +595,17 @@ function getCardHash(card) {
     return hash;
 }
 
+// https://remarkablemark.org/blog/2017/12/17/touch-file-nodejs/
+function touchFile(filename) {
+    const time = new Date();
+
+    try {
+        fs.utimesSync(filename, time, time);
+    } catch (err) {
+        fs.closeSync(fs.openSync(filename, 'w'));
+    }
+}
+
 async function writeToMP3FileOne(mp3List, card, index, outputMP3FileBase) {
     const keyword = card[COL_KEY];
     const keywordTransl = card[COL_VALUE];
@@ -611,6 +624,10 @@ async function writeToMP3FileOne(mp3List, card, index, outputMP3FileBase) {
 
         const ssml3 = ssmlWrap(keywordTransl, 2);
         await synthesizeSsml(ssml3, fileName2, DEFAULT_VOICE_TRANSL, DEFAULT_SPEAKING_RATE);
+    } else {
+        // be "touch" we mark file in cache as used
+        touchFile(fileName1);
+        touchFile(fileName2);
     }
 
     mp3List.push(fileName1);
